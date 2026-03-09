@@ -13,17 +13,33 @@ class ObsStreamDeckApp extends ConsumerStatefulWidget {
   ConsumerState<ObsStreamDeckApp> createState() => _ObsStreamDeckAppState();
 }
 
-class _ObsStreamDeckAppState extends ConsumerState<ObsStreamDeckApp> {
+class _ObsStreamDeckAppState extends ConsumerState<ObsStreamDeckApp>
+    with WidgetsBindingObserver {
   late final _router = AppRouter.router();
   bool _bootstrapped = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(appEngagementControllerProvider.notifier).recordAppOpen();
+      ref.read(premiumControllerProvider);
+      ref.read(obsRepositoryProvider).setAppInForeground(true);
       _bootstrapConnection();
     });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final isForeground = state == AppLifecycleState.resumed;
+    ref.read(obsRepositoryProvider).setAppInForeground(isForeground);
   }
 
   Future<void> _bootstrapConnection() async {

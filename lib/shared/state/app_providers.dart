@@ -9,6 +9,7 @@ import '../../core/services/layout_preset_service.dart';
 import '../../core/services/mock_obs_websocket_service.dart';
 import '../../core/services/obs_auto_discovery_service.dart';
 import '../../core/services/obs_websocket_service.dart';
+import '../../core/services/premium_billing_service.dart';
 import '../../core/services/real_obs_websocket_service.dart';
 import '../../data/datasources/connection_local_datasource.dart';
 import '../../data/datasources/controller_local_datasource.dart';
@@ -30,6 +31,7 @@ import '../../domain/usecases/execute_button_action_usecase.dart';
 import '../../domain/usecases/load_controller_pages_usecase.dart';
 import '../../domain/usecases/run_macro_usecase.dart';
 import 'app_engagement_controller.dart';
+import 'premium_controller.dart';
 
 final sharedPreferencesProvider = Provider<SharedPreferences>(
   (ref) =>
@@ -42,6 +44,10 @@ final localStorageServiceProvider = Provider<LocalStorageService>((ref) {
 
 final inAppReviewProvider = Provider<InAppReview>((ref) {
   return InAppReview.instance;
+});
+
+final premiumBillingServiceProvider = Provider<PremiumBillingService>((ref) {
+  return PremiumBillingService();
 });
 
 final obsAutoDiscoveryServiceProvider =
@@ -178,5 +184,13 @@ final appEngagementControllerProvider =
     localStorage: ref.watch(localStorageServiceProvider),
     obsRepository: ref.watch(obsRepositoryProvider),
     inAppReview: ref.watch(inAppReviewProvider),
+  );
+});
+
+final premiumControllerProvider =
+    StateNotifierProvider<PremiumController, PremiumState>((ref) {
+  return PremiumController(
+    storage: ref.watch(localStorageServiceProvider),
+    billingService: ref.watch(premiumBillingServiceProvider),
   );
 });

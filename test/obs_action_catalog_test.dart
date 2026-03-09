@@ -25,6 +25,12 @@ void main() {
     expect(actions, contains(ButtonActionType.pauseRecording));
     expect(actions, contains(ButtonActionType.resumeRecording));
     expect(actions, contains(ButtonActionType.toggleRecording));
+    expect(actions, contains(ButtonActionType.startVirtualCamera));
+    expect(actions, contains(ButtonActionType.stopVirtualCamera));
+    expect(actions, contains(ButtonActionType.toggleVirtualCamera));
+    expect(actions, contains(ButtonActionType.enableStudioMode));
+    expect(actions, contains(ButtonActionType.disableStudioMode));
+    expect(actions, contains(ButtonActionType.toggleStudioMode));
     expect(actions, contains(ButtonActionType.runMacro));
   });
 
@@ -43,6 +49,10 @@ void main() {
     expect(actions, contains(MacroActionType.stopStream));
     expect(actions, contains(MacroActionType.startRecording));
     expect(actions, contains(MacroActionType.stopRecording));
+    expect(actions, contains(MacroActionType.startVirtualCamera));
+    expect(actions, contains(MacroActionType.stopVirtualCamera));
+    expect(actions, contains(MacroActionType.enableStudioMode));
+    expect(actions, contains(MacroActionType.disableStudioMode));
     expect(actions, contains(MacroActionType.delay));
     expect(actions, isNot(contains(MacroActionType.runMacro)));
   });

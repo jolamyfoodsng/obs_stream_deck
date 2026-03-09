@@ -26,13 +26,14 @@ class PageManagerState {
 }
 
 class PageManagerController extends StateNotifier<PageManagerState> {
-  PageManagerController(this._repository)
+  PageManagerController(this._repository, this._ref)
       : super(const PageManagerState(
             pages: <ControllerPage>[], isLoading: true)) {
     _load();
   }
 
   final ControllerRepository _repository;
+  final Ref _ref;
 
   Future<void> _load() async {
     final pages = await _repository.loadPages();
@@ -46,7 +47,13 @@ class PageManagerController extends StateNotifier<PageManagerState> {
     await _persist(updated);
   }
 
-  Future<String> createPage({String? name}) async {
+  Future<String?> createPage({String? name}) async {
+    final premium = _ref.read(premiumControllerProvider);
+    if (!premium.isPremium &&
+        _countFreePlanPages(state.pages) >= AppConstants.freePageLimit) {
+      return null;
+    }
+
     final id = 'page_${DateTime.now().millisecondsSinceEpoch}';
     final created = ControllerPage(
       id: id,
@@ -69,9 +76,15 @@ class PageManagerController extends StateNotifier<PageManagerState> {
     await _persist(updated);
   }
 
-  Future<void> duplicatePage(String pageId) async {
+  Future<bool> duplicatePage(String pageId) async {
+    final premium = _ref.read(premiumControllerProvider);
+    if (!premium.isPremium &&
+        _countFreePlanPages(state.pages) >= AppConstants.freePageLimit) {
+      return false;
+    }
+
     final source = state.pages.where((page) => page.id == pageId).firstOrNull;
-    if (source == null) return;
+    if (source == null) return false;
 
     final duplicate = source.copyWith(
       id: 'page_${DateTime.now().microsecondsSinceEpoch}',
@@ -81,6 +94,7 @@ class PageManagerController extends StateNotifier<PageManagerState> {
 
     final updated = <ControllerPage>[...state.pages, duplicate];
     await _persist(updated);
+    return true;
   }
 
   Future<void> deletePage(String pageId) async {
@@ -111,11 +125,24 @@ class PageManagerController extends StateNotifier<PageManagerState> {
     state = state.copyWith(pages: pages);
     await _repository.savePages(pages);
   }
+
+  int _countFreePlanPages(List<ControllerPage> pages) {
+    return pages.where((page) => !_isEmergencyPage(page)).length;
+  }
+
+  bool _isEmergencyPage(ControllerPage page) {
+    final id = page.id.trim().toLowerCase();
+    final name = page.name.trim().toLowerCase();
+    return id == 'emergency' || name == 'emergency';
+  }
 }
 
 final pageManagerControllerProvider =
     StateNotifierProvider<PageManagerController, PageManagerState>((ref) {
-  return PageManagerController(ref.watch(controllerRepositoryProvider));
+  return PageManagerController(
+    ref.watch(controllerRepositoryProvider),
+    ref,
+  );
 });
 
 extension _FirstOrNull<T> on Iterable<T> {

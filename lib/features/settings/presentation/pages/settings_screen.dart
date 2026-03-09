@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../../../domain/entities/layout_preset.dart';
 import '../../../../domain/entities/scene_preview_mode.dart';
 import '../../../../domain/entities/obs_connection_config.dart';
+import '../../../../domain/entities/premium_feature.dart';
 import '../../../controller/presentation/controllers/controller_controller.dart';
 import '../../../page_manager/presentation/controllers/page_manager_controller.dart';
 import '../../../../shared/state/app_providers.dart';
@@ -13,6 +14,8 @@ import '../../../../shared/widgets/app_back_button.dart';
 import '../../../../shared/widgets/app_bottom_nav.dart';
 import '../../../../shared/widgets/brand_identity.dart';
 import '../../../../shared/widgets/app_section_header.dart';
+import '../../../../shared/widgets/premium_upgrade_modal.dart';
+import '../../../../shared/widgets/pro_badge.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -321,11 +324,78 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     context.go('/controller');
   }
 
+  List<Widget> _buildObsConnectionSection() {
+    return <Widget>[
+      const AppSectionHeader(title: 'OBS Connection'),
+      const SizedBox(height: 10),
+      if (ref.watch(volunteerModeProvider))
+        const Card(
+          child: ListTile(
+            leading: Icon(Icons.lock_outline),
+            title: Text('Connection settings hidden'),
+            subtitle: Text(
+              'Disable Volunteer Mode to manage OBS connection settings.',
+            ),
+            onTap: null,
+          ),
+        )
+      else if (_loadingConnectionPrefs)
+        const Card(
+          child: Padding(
+            padding: EdgeInsets.all(16),
+            child: Center(child: CircularProgressIndicator()),
+          ),
+        )
+      else
+        Card(
+          child: Column(
+            children: <Widget>[
+              SwitchListTile.adaptive(
+                value: _autoReconnect,
+                title: const Text('Auto reconnect'),
+                subtitle: const Text('Reconnect automatically after drop.'),
+                onChanged: (value) async {
+                  setState(() => _autoReconnect = value);
+                  await _saveConnectionPrefs();
+                },
+              ),
+              const Divider(height: 1),
+              SwitchListTile.adaptive(
+                value: _rememberConnectionInfo,
+                title: const Text('Remember connection info'),
+                subtitle: const Text('Persist OBS host/port/password.'),
+                onChanged: (value) async {
+                  setState(() => _rememberConnectionInfo = value);
+                  await _saveConnectionPrefs();
+                },
+              ),
+              const Divider(height: 1),
+              ListTile(
+                leading: const Icon(Icons.delete_outline),
+                title: const Text('Clear saved connection'),
+                subtitle: const Text('Remove saved OBS host/password.'),
+                onTap: _clearSavedConfig,
+              ),
+              const Divider(height: 1),
+              ListTile(
+                leading: const Icon(Icons.link),
+                title: const Text('Open connection screen'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => context.go('/connection'),
+              ),
+            ],
+          ),
+        ),
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     final volunteerMode = ref.watch(volunteerModeProvider);
+    final premium = ref.watch(premiumControllerProvider);
     final scenePreviewMode = ref.watch(scenePreviewModeProvider);
-    final scenePreviewEnabled = scenePreviewMode != ScenePreviewMode.off;
+    final scenePreviewEnabled =
+        premium.isPremium && scenePreviewMode != ScenePreviewMode.off;
     final engagement = ref.watch(appEngagementControllerProvider);
 
     return Scaffold(
@@ -370,107 +440,265 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     ),
                   ),
                   const Divider(height: 1),
-                  SwitchListTile.adaptive(
-                    value: scenePreviewEnabled,
-                    title: const Text('Enable Scene Previews'),
-                    subtitle: Text(
-                      scenePreviewEnabled
-                          ? 'On: scene snapshots are shown.'
-                          : 'Off: no scene preview images are loaded.',
+                  if (premium.isPremium) ...<Widget>[
+                    SwitchListTile.adaptive(
+                      value: scenePreviewEnabled,
+                      title: const Text('Enable Scene Previews'),
+                      subtitle: Text(
+                        scenePreviewEnabled
+                            ? 'On: scene snapshots are shown.'
+                            : 'Off: no scene preview images are loaded.',
+                      ),
+                      onChanged: (enabled) async {
+                        final nextMode = enabled
+                            ? (scenePreviewMode == ScenePreviewMode.off
+                                ? ScenePreviewMode.staticThumbnails
+                                : scenePreviewMode)
+                            : ScenePreviewMode.off;
+                        await ref
+                            .read(scenePreviewModeProvider.notifier)
+                            .setMode(nextMode);
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(context)
+                          ..hideCurrentSnackBar()
+                          ..showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                enabled
+                                    ? 'Scene previews enabled.'
+                                    : 'Scene previews disabled.',
+                              ),
+                              duration: const Duration(milliseconds: 1400),
+                            ),
+                          );
+                      },
                     ),
-                    onChanged: (enabled) async {
-                      final nextMode = enabled
-                          ? (scenePreviewMode == ScenePreviewMode.off
-                              ? ScenePreviewMode.staticThumbnails
-                              : scenePreviewMode)
-                          : ScenePreviewMode.off;
-                      await ref
-                          .read(scenePreviewModeProvider.notifier)
-                          .setMode(nextMode);
-                      if (!context.mounted) return;
-                      ScaffoldMessenger.of(context)
-                        ..hideCurrentSnackBar()
-                        ..showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              enabled
-                                  ? 'Scene previews enabled.'
-                                  : 'Scene previews disabled.',
-                            ),
-                            duration: const Duration(milliseconds: 1400),
-                          ),
-                        );
-                    },
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        if (scenePreviewEnabled) ...<Widget>[
-                          Text(
-                            'Snapshot-based previews only. No live thumbnail streaming.',
-                            style:
-                                Theme.of(context).textTheme.bodySmall?.copyWith(
-                                      color: Theme.of(context)
-                                          .colorScheme
-                                          .onSurfaceVariant,
-                                    ),
-                          ),
-                          const SizedBox(height: 10),
-                          DropdownButtonFormField<ScenePreviewMode>(
-                            initialValue: scenePreviewMode,
-                            decoration: const InputDecoration(
-                              labelText: 'Preview behavior',
-                            ),
-                            items: const <ScenePreviewMode>[
-                              ScenePreviewMode.staticThumbnails,
-                              ScenePreviewMode.autoRefresh10s,
-                              ScenePreviewMode.tapToRefresh,
-                            ]
-                                .map(
-                                  (mode) => DropdownMenuItem<ScenePreviewMode>(
-                                    value: mode,
-                                    child: Text(mode.label),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          if (scenePreviewEnabled) ...<Widget>[
+                            Text(
+                              'Snapshot-based previews only. No live thumbnail streaming.',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodySmall
+                                  ?.copyWith(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurfaceVariant,
                                   ),
-                                )
-                                .toList(),
-                            onChanged: (mode) async {
-                              if (mode == null) return;
-                              await ref
-                                  .read(scenePreviewModeProvider.notifier)
-                                  .setMode(mode);
-                              if (!context.mounted) return;
-                              ScaffoldMessenger.of(context)
-                                ..hideCurrentSnackBar()
-                                ..showSnackBar(
-                                  SnackBar(
-                                    content: Text(
-                                      'Scene Preview Mode set to ${mode.label}.',
+                            ),
+                            const SizedBox(height: 10),
+                            DropdownButtonFormField<ScenePreviewMode>(
+                              initialValue: scenePreviewMode,
+                              decoration: const InputDecoration(
+                                labelText: 'Preview behavior',
+                              ),
+                              items: const <ScenePreviewMode>[
+                                ScenePreviewMode.staticThumbnails,
+                                ScenePreviewMode.autoRefresh10s,
+                                ScenePreviewMode.tapToRefresh,
+                              ]
+                                  .map(
+                                    (mode) =>
+                                        DropdownMenuItem<ScenePreviewMode>(
+                                      value: mode,
+                                      child: Text(mode.label),
                                     ),
-                                    duration:
-                                        const Duration(milliseconds: 1400),
+                                  )
+                                  .toList(),
+                              onChanged: (mode) async {
+                                if (mode == null) return;
+                                await ref
+                                    .read(scenePreviewModeProvider.notifier)
+                                    .setMode(mode);
+                                if (!context.mounted) return;
+                                ScaffoldMessenger.of(context)
+                                  ..hideCurrentSnackBar()
+                                  ..showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        'Scene Preview Mode set to ${mode.label}.',
+                                      ),
+                                      duration:
+                                          const Duration(milliseconds: 1400),
+                                    ),
+                                  );
+                              },
+                            ),
+                          ] else ...<Widget>[
+                            Text(
+                              'Enable this to display scene snapshots on scene buttons.',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodySmall
+                                  ?.copyWith(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurfaceVariant,
                                   ),
-                                );
-                            },
-                          ),
-                        ] else ...<Widget>[
-                          Text(
-                            'Enable this to display scene snapshots on scene buttons.',
-                            style:
-                                Theme.of(context).textTheme.bodySmall?.copyWith(
-                                      color: Theme.of(context)
-                                          .colorScheme
-                                          .onSurfaceVariant,
-                                    ),
-                          ),
+                            ),
+                          ],
                         ],
-                      ],
+                      ),
                     ),
-                  ),
+                  ] else ...<Widget>[
+                    ListTile(
+                      leading: const Icon(Icons.image_outlined),
+                      title: const Row(
+                        children: <Widget>[
+                          Expanded(child: Text('Scene Preview Thumbnails')),
+                          ProBadge(compact: true),
+                        ],
+                      ),
+                      subtitle: const Text(
+                        'Unlock static scene snapshots and refresh modes.',
+                      ),
+                      trailing: const Icon(Icons.lock_outline),
+                      onTap: () => showPremiumUpgradeModal(
+                        context,
+                        highlightedFeature: PremiumFeature.scenePreviews,
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
+            const SizedBox(height: 10),
+            ..._buildObsConnectionSection(),
+            const SizedBox(height: 10),
+            const AppSectionHeader(title: 'Premium'),
+            const SizedBox(height: 10),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: premium.isPremium
+                    ? Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          Row(
+                            children: <Widget>[
+                              const Text(
+                                'DeckPilot Premium',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Icon(
+                                Icons.verified,
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            'Activated',
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleSmall
+                                ?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                  color: Theme.of(context).colorScheme.primary,
+                                ),
+                          ),
+                          const SizedBox(height: 4),
+                          const Text(
+                            'Thank you for supporting DeckPilot.',
+                          ),
+                        ],
+                      )
+                    : Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          const Row(
+                            children: <Widget>[
+                              Expanded(
+                                child: Text(
+                                  'DeckPilot Premium',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ),
+                              ProBadge(),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          const Text('Unlock the full power of OBS control.'),
+                          const SizedBox(height: 10),
+                          const _PremiumBullet(text: 'Unlimited pages'),
+                          const _PremiumBullet(text: 'Unlimited scene buttons'),
+                          const _PremiumBullet(text: 'Macros'),
+                          const _PremiumBullet(text: 'Scene previews'),
+                          const _PremiumBullet(text: 'Stream monitoring'),
+                          const _PremiumBullet(text: 'Emergency controls page'),
+                          const SizedBox(height: 12),
+                          SizedBox(
+                            width: double.infinity,
+                            child: FilledButton(
+                              onPressed: () => showPremiumUpgradeModal(
+                                context,
+                                highlightedFeature: PremiumFeature.macros,
+                              ),
+                              child: Text(
+                                'Upgrade to Premium — ${premium.productPrice}',
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+              ),
+            ),
+            if (!premium.isPremium) ...<Widget>[
+              const SizedBox(height: 10),
+              Card(
+                child: Column(
+                  children: <Widget>[
+                    ListTile(
+                      leading: const Icon(Icons.auto_mode_outlined),
+                      title: const Row(
+                        children: <Widget>[
+                          Expanded(child: Text('Advanced Automation')),
+                          ProBadge(compact: true),
+                        ],
+                      ),
+                      subtitle: const Text(
+                        'Build richer control flows and automation recipes.',
+                      ),
+                      trailing: const Icon(Icons.lock_outline),
+                      onTap: () => showPremiumUpgradeModal(
+                        context,
+                        highlightedFeature: PremiumFeature.advancedAutomation,
+                      ),
+                    ),
+                    const Divider(height: 1),
+                    ListTile(
+                      leading: const Icon(Icons.public_outlined),
+                      title: const Row(
+                        children: <Widget>[
+                          Expanded(
+                              child: Text('Internet Remote (Coming Soon)')),
+                          ProBadge(compact: true),
+                        ],
+                      ),
+                      subtitle: const Text(
+                        'Control OBS remotely over the internet when available.',
+                      ),
+                      trailing: const Icon(Icons.lock_outline),
+                      onTap: () => showPremiumUpgradeModal(
+                        context,
+                        highlightedFeature: PremiumFeature.internetRemote,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             const SizedBox(height: 10),
             const AppSectionHeader(title: 'Performance'),
             const SizedBox(height: 10),
@@ -592,68 +820,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ),
               ),
             const SizedBox(height: 10),
-            const AppSectionHeader(title: 'OBS Connection'),
-            const SizedBox(height: 10),
-            if (volunteerMode)
-              const Card(
-                child: ListTile(
-                  leading: Icon(Icons.lock_outline),
-                  title: Text('Connection settings hidden'),
-                  subtitle: Text(
-                    'Disable Volunteer Mode to manage OBS connection settings.',
-                  ),
-                  onTap: null,
-                ),
-              )
-            else if (_loadingConnectionPrefs)
-              const Card(
-                child: Padding(
-                  padding: EdgeInsets.all(16),
-                  child: Center(child: CircularProgressIndicator()),
-                ),
-              )
-            else
-              Card(
-                child: Column(
-                  children: <Widget>[
-                    SwitchListTile.adaptive(
-                      value: _autoReconnect,
-                      title: const Text('Auto reconnect'),
-                      subtitle:
-                          const Text('Reconnect automatically after drop.'),
-                      onChanged: (value) async {
-                        setState(() => _autoReconnect = value);
-                        await _saveConnectionPrefs();
-                      },
-                    ),
-                    const Divider(height: 1),
-                    SwitchListTile.adaptive(
-                      value: _rememberConnectionInfo,
-                      title: const Text('Remember connection info'),
-                      subtitle: const Text('Persist OBS host/port/password.'),
-                      onChanged: (value) async {
-                        setState(() => _rememberConnectionInfo = value);
-                        await _saveConnectionPrefs();
-                      },
-                    ),
-                    const Divider(height: 1),
-                    ListTile(
-                      leading: const Icon(Icons.delete_outline),
-                      title: const Text('Clear saved connection'),
-                      subtitle: const Text('Remove saved OBS host/password.'),
-                      onTap: _clearSavedConfig,
-                    ),
-                    const Divider(height: 1),
-                    ListTile(
-                      leading: const Icon(Icons.link),
-                      title: const Text('Open connection screen'),
-                      trailing: const Icon(Icons.chevron_right),
-                      onTap: () => context.go('/connection'),
-                    ),
-                  ],
-                ),
-              ),
-            const SizedBox(height: 10),
             const AppSectionHeader(title: 'Help & Onboarding'),
             const SizedBox(height: 10),
             Card(
@@ -765,6 +931,30 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       ),
       bottomNavigationBar: const AppBottomNav(
         currentTab: AppBottomNavTab.settings,
+      ),
+    );
+  }
+}
+
+class _PremiumBullet extends StatelessWidget {
+  const _PremiumBullet({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        children: <Widget>[
+          Icon(
+            Icons.check_circle,
+            size: 16,
+            color: Theme.of(context).colorScheme.primary,
+          ),
+          const SizedBox(width: 8),
+          Expanded(child: Text(text)),
+        ],
       ),
     );
   }

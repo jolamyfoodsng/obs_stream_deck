@@ -12,6 +12,11 @@ class VolunteerModePolicy {
       case ButtonActionType.resumeRecording:
       case ButtonActionType.toggleRecording:
       case ButtonActionType.runMacro:
+      case ButtonActionType.stopVirtualCamera:
+      case ButtonActionType.toggleVirtualCamera:
+      case ButtonActionType.enableStudioMode:
+      case ButtonActionType.disableStudioMode:
+      case ButtonActionType.toggleStudioMode:
         return true;
       case ButtonActionType.switchScene:
       case ButtonActionType.setPreviewScene:
@@ -23,6 +28,7 @@ class VolunteerModePolicy {
       case ButtonActionType.toggleMute:
       case ButtonActionType.startStream:
       case ButtonActionType.startRecording:
+      case ButtonActionType.startVirtualCamera:
         return false;
     }
   }

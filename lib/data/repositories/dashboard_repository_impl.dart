@@ -20,7 +20,7 @@ class DashboardRepositoryImpl implements DashboardRepository {
   DashboardStats _fromObsState(ObsRuntimeState state) {
     final audioLevels = <String, double>{
       for (final source in state.audioSources)
-        source.name: source.isMuted ? -60.0 : (-60 + (source.volume * 60)),
+        source.name: source.isMuted ? -60.0 : source.levelDb,
     };
 
     return DashboardStats(

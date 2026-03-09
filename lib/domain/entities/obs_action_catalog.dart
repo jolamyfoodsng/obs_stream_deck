@@ -18,6 +18,12 @@ enum ObsActionCode {
   pauseRecording,
   resumeRecording,
   toggleRecording,
+  startVirtualCamera,
+  stopVirtualCamera,
+  toggleVirtualCamera,
+  enableStudioMode,
+  disableStudioMode,
+  toggleStudioMode,
   runMacro,
   delay,
 }
@@ -153,6 +159,38 @@ class ObsActionCatalog {
       macroSupported: false,
     ),
     ObsActionDefinition(
+      code: ObsActionCode.startVirtualCamera,
+      label: 'Start Virtual Camera',
+      targetKind: ObsActionTargetKind.none,
+    ),
+    ObsActionDefinition(
+      code: ObsActionCode.stopVirtualCamera,
+      label: 'Stop Virtual Camera',
+      targetKind: ObsActionTargetKind.none,
+    ),
+    ObsActionDefinition(
+      code: ObsActionCode.toggleVirtualCamera,
+      label: 'Toggle Virtual Camera',
+      targetKind: ObsActionTargetKind.none,
+      macroSupported: false,
+    ),
+    ObsActionDefinition(
+      code: ObsActionCode.enableStudioMode,
+      label: 'Enable Studio Mode',
+      targetKind: ObsActionTargetKind.none,
+    ),
+    ObsActionDefinition(
+      code: ObsActionCode.disableStudioMode,
+      label: 'Disable Studio Mode',
+      targetKind: ObsActionTargetKind.none,
+    ),
+    ObsActionDefinition(
+      code: ObsActionCode.toggleStudioMode,
+      label: 'Toggle Studio Mode',
+      targetKind: ObsActionTargetKind.none,
+      macroSupported: false,
+    ),
+    ObsActionDefinition(
       code: ObsActionCode.runMacro,
       label: 'Run Macro',
       targetKind: ObsActionTargetKind.macro,
@@ -185,6 +223,12 @@ class ObsActionCatalog {
     ButtonActionType.pauseRecording: ObsActionCode.pauseRecording,
     ButtonActionType.resumeRecording: ObsActionCode.resumeRecording,
     ButtonActionType.toggleRecording: ObsActionCode.toggleRecording,
+    ButtonActionType.startVirtualCamera: ObsActionCode.startVirtualCamera,
+    ButtonActionType.stopVirtualCamera: ObsActionCode.stopVirtualCamera,
+    ButtonActionType.toggleVirtualCamera: ObsActionCode.toggleVirtualCamera,
+    ButtonActionType.enableStudioMode: ObsActionCode.enableStudioMode,
+    ButtonActionType.disableStudioMode: ObsActionCode.disableStudioMode,
+    ButtonActionType.toggleStudioMode: ObsActionCode.toggleStudioMode,
     ButtonActionType.runMacro: ObsActionCode.runMacro,
   };
 
@@ -203,6 +247,10 @@ class ObsActionCatalog {
     MacroActionType.stopStream: ObsActionCode.stopStream,
     MacroActionType.startRecording: ObsActionCode.startRecording,
     MacroActionType.stopRecording: ObsActionCode.stopRecording,
+    MacroActionType.startVirtualCamera: ObsActionCode.startVirtualCamera,
+    MacroActionType.stopVirtualCamera: ObsActionCode.stopVirtualCamera,
+    MacroActionType.enableStudioMode: ObsActionCode.enableStudioMode,
+    MacroActionType.disableStudioMode: ObsActionCode.disableStudioMode,
     MacroActionType.delay: ObsActionCode.delay,
     MacroActionType.runMacro: ObsActionCode.runMacro,
   };

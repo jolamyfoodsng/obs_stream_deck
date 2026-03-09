@@ -2,10 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/constants/app_constants.dart';
 import '../../../../domain/entities/controller_page.dart';
+import '../../../../domain/entities/premium_feature.dart';
 import '../../../../shared/state/app_providers.dart';
 import '../../../../shared/widgets/app_back_button.dart';
 import '../../../../shared/widgets/app_bottom_nav.dart';
+import '../../../../shared/widgets/page_helper_text.dart';
+import '../../../../shared/widgets/premium_upgrade_modal.dart';
+import '../../../../shared/widgets/pro_badge.dart';
 import '../controllers/page_manager_controller.dart';
 
 class PageManagerScreen extends ConsumerStatefulWidget {
@@ -16,11 +21,37 @@ class PageManagerScreen extends ConsumerStatefulWidget {
 }
 
 class _PageManagerScreenState extends ConsumerState<PageManagerScreen> {
+  Future<void> _showPagePremiumPreview({
+    required PremiumFeature feature,
+    required String title,
+    required String description,
+    required List<String> bullets,
+  }) async {
+    final shouldUpgrade = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _PagePremiumPreviewSheet(
+        title: title,
+        description: description,
+        bullets: bullets,
+      ),
+    );
+
+    if (shouldUpgrade == true && mounted) {
+      await showPremiumUpgradeModal(
+        context,
+        highlightedFeature: feature,
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(pageManagerControllerProvider);
     final controller = ref.read(pageManagerControllerProvider.notifier);
     final volunteerMode = ref.watch(volunteerModeProvider);
+    final premium = ref.watch(premiumControllerProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -42,6 +73,11 @@ class _PageManagerScreenState extends ConsumerState<PageManagerScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
+                    const PageHelperText(
+                      text:
+                          'Organize your control pages. Each page can contain buttons for scenes, audio, or macros.',
+                      padding: EdgeInsets.fromLTRB(0, 0, 0, 10),
+                    ),
                     Text(
                       'MANAGE LAYOUT',
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
@@ -78,96 +114,152 @@ class _PageManagerScreenState extends ConsumerState<PageManagerScreen> {
                         buildDefaultDragHandles: false,
                         itemBuilder: (context, index) {
                           final page = state.pages[index];
-                          return Container(
+                          final premiumLockedPage =
+                              !premium.isPremium && _isPremiumOnlyPage(page);
+                          return Opacity(
                             key: ValueKey<String>(page.id),
-                            margin: const EdgeInsets.only(bottom: 10),
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(
+                            opacity: premiumLockedPage ? 0.72 : 1,
+                            child: Container(
+                              margin: const EdgeInsets.only(bottom: 10),
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .outlineVariant
+                                      .withValues(alpha: 0.8),
+                                ),
                                 color: Theme.of(context)
                                     .colorScheme
-                                    .outlineVariant
-                                    .withValues(alpha: 0.8),
+                                    .surface
+                                    .withValues(alpha: 0.75),
                               ),
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .surface
-                                  .withValues(alpha: 0.75),
-                            ),
-                            child: Row(
-                              children: <Widget>[
-                                if (!volunteerMode)
-                                  ReorderableDragStartListener(
-                                    index: index,
-                                    child: Icon(
-                                      Icons.drag_indicator,
+                              child: Row(
+                                children: <Widget>[
+                                  if (!volunteerMode)
+                                    ReorderableDragStartListener(
+                                      index: index,
+                                      child: Icon(
+                                        Icons.drag_indicator,
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .onSurfaceVariant,
+                                      ),
+                                    )
+                                  else
+                                    Icon(
+                                      Icons.lock_outline,
                                       color: Theme.of(context)
                                           .colorScheme
                                           .onSurfaceVariant,
                                     ),
-                                  )
-                                else
-                                  Icon(
-                                    Icons.lock_outline,
-                                    color: Theme.of(context)
-                                        .colorScheme
-                                        .onSurfaceVariant,
-                                  ),
-                                const SizedBox(width: 12),
-                                _LayoutPreview(page: page),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: <Widget>[
-                                      Text(
-                                        'Page ${index + 1}: ${page.name}',
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: Theme.of(context)
-                                            .textTheme
-                                            .titleLarge
-                                            ?.copyWith(
-                                                fontWeight: FontWeight.w700),
-                                      ),
-                                      const SizedBox(height: 2),
-                                      Text(
-                                        '${page.buttonCount} widgets active',
-                                        style: Theme.of(context)
-                                            .textTheme
-                                            .bodyMedium
-                                            ?.copyWith(
-                                              color: Theme.of(context)
-                                                  .colorScheme
-                                                  .onSurfaceVariant,
+                                  const SizedBox(width: 12),
+                                  _LayoutPreview(page: page),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: <Widget>[
+                                        Row(
+                                          children: <Widget>[
+                                            Expanded(
+                                              child: Text(
+                                                'Page ${index + 1}: ${page.name}',
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: Theme.of(context)
+                                                    .textTheme
+                                                    .titleLarge
+                                                    ?.copyWith(
+                                                      fontWeight:
+                                                          FontWeight.w700,
+                                                    ),
+                                              ),
                                             ),
+                                            if (premiumLockedPage) ...<Widget>[
+                                              const SizedBox(width: 8),
+                                              const ProBadge(compact: true),
+                                            ],
+                                          ],
+                                        ),
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          '${page.buttonCount} widgets active',
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .bodyMedium
+                                              ?.copyWith(
+                                                color: Theme.of(context)
+                                                    .colorScheme
+                                                    .onSurfaceVariant,
+                                              ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  if (!volunteerMode)
+                                    IconButton(
+                                      onPressed: () async {
+                                        if (premiumLockedPage) {
+                                          await _showPagePremiumPreview(
+                                            feature: PremiumFeature.emergencyPage,
+                                            title: 'Emergency Page Preview',
+                                            description:
+                                                'Keep your critical fallback controls one tap away during a live issue.',
+                                            bullets: const <String>[
+                                              'Safe Scene and BRB switching',
+                                              'Mute All, Hide Camera, Hide Overlays',
+                                              'Protected stop/restart stream controls',
+                                            ],
+                                          );
+                                          return;
+                                        }
+                                        await _showPageActions(
+                                          context: context,
+                                          controller: controller,
+                                          page: page,
+                                        );
+                                      },
+                                      icon: Icon(
+                                        Icons.edit,
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .onSurfaceVariant,
                                       ),
-                                    ],
-                                  ),
-                                ),
-                                if (!volunteerMode)
-                                  IconButton(
-                                    onPressed: () => _showPageActions(
-                                      context: context,
-                                      controller: controller,
-                                      page: page,
+                                      tooltip: 'Edit page actions',
                                     ),
-                                    icon: Icon(
-                                      Icons.edit,
-                                      color: Theme.of(context)
-                                          .colorScheme
-                                          .onSurfaceVariant,
-                                    ),
-                                    tooltip: 'Edit page actions',
-                                  ),
-                              ],
+                                ],
+                              ),
                             ),
                           );
                         },
                       ),
                     ),
+                    if (!premium.isPremium) ...<Widget>[
+                      const SizedBox(height: 10),
+                      ...List<Widget>.generate(
+                        AppConstants.freeLockedPagePreviewCount,
+                        (index) => Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: _LockedPagePreviewCard(
+                            pageNumber: state.pages.length + index + 1,
+                            onTap: () => _showPagePremiumPreview(
+                              feature: PremiumFeature.unlimitedPages,
+                              title: 'More Deck Pages',
+                              description:
+                                  'Create separate layouts for scenes, media, audio, emergency actions, and volunteer operators.',
+                              bullets: const <String>[
+                                'Unlimited deck pages',
+                                'Dedicated layouts for different workflows',
+                                'Fast switching between custom pages',
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                     if (!volunteerMode) ...<Widget>[
                       const SizedBox(height: 8),
                       _AddNewPageButton(
@@ -222,7 +314,11 @@ class _PageManagerScreenState extends ConsumerState<PageManagerScreen> {
                 title: const Text('Duplicate'),
                 onTap: () async {
                   Navigator.of(sheetContext).pop();
-                  await controller.duplicatePage(page.id);
+                  final duplicated = await controller.duplicatePage(page.id);
+                  if (!context.mounted) return;
+                  if (!duplicated) {
+                    await _showPageLimitReachedDialog();
+                  }
                 },
               ),
               ListTile(
@@ -267,6 +363,10 @@ class _PageManagerScreenState extends ConsumerState<PageManagerScreen> {
 
     final pageId = await controller.createPage(name: result.name);
     if (!mounted) return;
+    if (pageId == null) {
+      await _showPageLimitReachedDialog();
+      return;
+    }
     context.go('/controller?pageId=$pageId');
   }
 
@@ -328,6 +428,42 @@ class _PageManagerScreenState extends ConsumerState<PageManagerScreen> {
     );
 
     return result ?? false;
+  }
+
+  bool _isPremiumOnlyPage(ControllerPage page) {
+    final normalizedId = page.id.trim().toLowerCase();
+    final normalizedName = page.name.trim().toLowerCase();
+    return normalizedId == 'emergency' || normalizedName == 'emergency';
+  }
+
+  Future<void> _showPageLimitReachedDialog() async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Page limit reached'),
+          content: const Text(
+            'Free users can create only 1 deck page. Upgrade to Premium to unlock unlimited pages.',
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () async {
+                Navigator.of(dialogContext).pop();
+                await showPremiumUpgradeModal(
+                  context,
+                  highlightedFeature: PremiumFeature.unlimitedPages,
+                );
+              },
+              child: const Text('Upgrade to Premium'),
+            ),
+          ],
+        );
+      },
+    );
   }
 }
 
@@ -420,6 +556,193 @@ class _AddNewPageButton extends StatelessWidget {
                       color: accent,
                       fontWeight: FontWeight.w700,
                     ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _LockedPagePreviewCard extends StatelessWidget {
+  const _LockedPagePreviewCard({
+    required this.pageNumber,
+    required this.onTap,
+  });
+
+  final int pageNumber;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Opacity(
+      opacity: 0.76,
+      child: Material(
+        color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.72),
+        borderRadius: BorderRadius.circular(16),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(16),
+          child: Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: Theme.of(context)
+                    .colorScheme
+                    .outlineVariant
+                    .withValues(alpha: 0.8),
+              ),
+            ),
+            child: Row(
+              children: <Widget>[
+                Icon(
+                  Icons.lock_outline,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Row(
+                        children: <Widget>[
+                          Expanded(
+                            child: Text(
+                              'Page $pageNumber',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .titleMedium
+                                  ?.copyWith(fontWeight: FontWeight.w700),
+                            ),
+                          ),
+                          const ProBadge(compact: true),
+                        ],
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'Premium page slot. Unlock unlimited pages and custom deck layouts.',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant,
+                            ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PagePremiumPreviewSheet extends StatelessWidget {
+  const _PagePremiumPreviewSheet({
+    required this.title,
+    required this.description,
+    required this.bullets,
+  });
+
+  final String title;
+  final String description;
+  final List<String> bullets;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(18, 12, 18, 18),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Center(
+                child: Container(
+                  width: 42,
+                  height: 5,
+                  decoration: BoxDecoration(
+                    color: Theme.of(context)
+                        .colorScheme
+                        .onSurfaceVariant
+                        .withValues(alpha: 0.34),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 14),
+              Row(
+                children: <Widget>[
+                  Expanded(
+                    child: Text(
+                      title,
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.w800,
+                          ),
+                    ),
+                  ),
+                  const ProBadge(compact: true),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                description,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+              ),
+              const SizedBox(height: 14),
+              ...bullets.map(
+                (item) => Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Icon(
+                        Icons.check_circle,
+                        size: 16,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          item,
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                fontWeight: FontWeight.w600,
+                              ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: <Widget>[
+                  Expanded(
+                    child: TextButton(
+                      onPressed: () => Navigator.of(context).pop(false),
+                      child: const Text('Maybe Later'),
+                    ),
+                  ),
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: () => Navigator.of(context).pop(true),
+                      icon: const Icon(Icons.auto_awesome),
+                      label: const Text('Upgrade'),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/constants/app_constants.dart';
 import '../../../../domain/entities/button_action.dart';
 import '../../../../shared/extensions/color_extensions.dart';
 import '../../../../shared/extensions/icon_mapper.dart';
@@ -76,6 +77,7 @@ class _ButtonEditorScreenState extends ConsumerState<ButtonEditorScreen> {
 
     final state = ref.watch(buttonEditorControllerProvider(_args));
     final controller = ref.read(buttonEditorControllerProvider(_args).notifier);
+    final premium = ref.watch(premiumControllerProvider);
     const colorOptions = <String>[
       '#137FEC',
       '#F59E0B',
@@ -170,7 +172,8 @@ class _ButtonEditorScreenState extends ConsumerState<ButtonEditorScreen> {
                   )
                   .toList(),
               onChanged: (value) {
-                if (value != null) controller.updateActionType(value);
+                if (value == null) return;
+                controller.updateActionType(value);
               },
             ),
             const SizedBox(height: 14),
@@ -195,19 +198,38 @@ class _ButtonEditorScreenState extends ConsumerState<ButtonEditorScreen> {
                       ),
                     )
                     .toList(),
-                onChanged:
-                    targets.isEmpty ? null : controller.updateActionTarget,
+                onChanged: targets.isEmpty
+                    ? null
+                    : controller.updateActionTarget,
               ),
             if (actionDefinition.requiresTarget && targets.isEmpty)
               Padding(
                 padding: const EdgeInsets.only(top: 8),
                 child: Text(
-                  'No targets available for this action yet.',
+                  actionType == ButtonActionType.runMacro
+                      ? premium.isPremium
+                          ? 'No macros available yet. Create one in the Macros tab.'
+                          : 'No free macros available yet. Create one in the Macros tab. Free includes ${AppConstants.freeMacroLimit} macro with up to ${AppConstants.freeMacroActionLimit} actions.'
+                      : 'No targets available for this action yet.',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
                 ),
               ),
+            if (actionType == ButtonActionType.runMacro) ...<Widget>[
+              const SizedBox(height: 6),
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Text(
+                  premium.isPremium
+                      ? 'Assign any saved macro to this button.'
+                      : 'Macro buttons work on the free plan too. Free includes ${AppConstants.freeMacroLimit} macro with up to ${AppConstants.freeMacroActionLimit} actions.',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                ),
+              ),
+            ],
             const SizedBox(height: 14),
             Text(
               'Active Color',

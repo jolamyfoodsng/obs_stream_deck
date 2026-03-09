@@ -21,6 +21,7 @@ import '../../../../domain/usecases/load_controller_pages_usecase.dart';
 import '../../../../domain/usecases/run_macro_usecase.dart';
 import '../../../../shared/state/deck_button_runtime_state.dart';
 import '../../../../shared/state/app_providers.dart';
+import '../../../../shared/state/premium_controller.dart';
 import '../models/controller_alert_banner.dart';
 import '../../../../shared/volunteer/volunteer_mode_policy.dart';
 
@@ -30,6 +31,7 @@ enum ControllerButtonInteractionOutcome {
   ignored,
   executed,
   holdRequired,
+  blockedByPremium,
   blockedByVolunteerMode,
   selectedInEditMode,
   openEditor,
@@ -112,6 +114,7 @@ class ControllerController extends StateNotifier<ControllerScreenState> {
         _runMacro = runMacro,
         _ref = ref,
         _scenePreviewMode = ref.read(scenePreviewModeProvider),
+        _isPremiumUser = ref.read(premiumControllerProvider).isPremium,
         super(
           ControllerScreenState(
             pages: const <ControllerPage>[],
@@ -135,6 +138,7 @@ class ControllerController extends StateNotifier<ControllerScreenState> {
   final RunMacroUseCase _runMacro;
   final Ref _ref;
   ScenePreviewMode _scenePreviewMode;
+  bool _isPremiumUser;
 
   StreamSubscription? _obsSub;
   Timer? _bannerAutoHideTimer;
@@ -147,6 +151,28 @@ class ControllerController extends StateNotifier<ControllerScreenState> {
   ObsRuntimeState? _previousObsState;
 
   Future<void> _init() async {
+    _ref.listen<PremiumState>(premiumControllerProvider, (_, next) {
+      if (_isPremiumUser == next.isPremium) return;
+      _isPremiumUser = next.isPremium;
+      _configureScenePreviewTimers();
+      if (!_isPremiumUser && state.sceneThumbnails.isNotEmpty) {
+        state = state.copyWith(sceneThumbnails: const <String, String>{});
+        unawaited(_persistSceneThumbnailCache(const <String, String>{}));
+      }
+
+      if (state.obsState.connectionStatus == ConnectionStatus.connected) {
+        unawaited(_syncObsBackedPages(state.obsState));
+        if (_isPremiumUser) {
+          unawaited(
+            _refreshScenePreviewsForCurrentPage(
+              scenes: state.obsState.scenes,
+              refreshExisting: false,
+            ),
+          );
+        }
+      }
+    });
+
     _obsSub = _ref.read(obsRepositoryProvider).watchState().listen((obsState) {
       _handleObsStateUpdated(obsState);
       if (obsState.connectionStatus == ConnectionStatus.connected) {
@@ -209,7 +235,12 @@ class ControllerController extends StateNotifier<ControllerScreenState> {
     );
   }
 
-  Future<String> createPage({String? name}) async {
+  Future<String?> createPage({String? name}) async {
+    if (!_isPremiumUser &&
+        _countFreePlanPages(state.pages) >= AppConstants.freePageLimit) {
+      return null;
+    }
+
     const pageColumns = AppConstants.defaultPageColumns;
     const pageRows = AppConstants.defaultPageRows;
     final pageId = 'page_${DateTime.now().microsecondsSinceEpoch}';
@@ -288,6 +319,15 @@ class ControllerController extends StateNotifier<ControllerScreenState> {
   }
 
   DeckButtonRuntimeState resolveButtonState(ControllerButton button) {
+    if (_isPremiumActionLocked(button.action)) {
+      return const DeckButtonRuntimeState(
+        enabled: true,
+        active: false,
+        pending: false,
+        hasError: false,
+      );
+    }
+
     final pending = state.pendingButtonIds.contains(button.id);
     final active = _isActionActive(button.action);
     final enabled = _isActionEnabled(button.action);
@@ -301,6 +341,7 @@ class ControllerController extends StateNotifier<ControllerScreenState> {
   }
 
   String? sceneThumbnailForButton(ControllerButton button) {
+    if (!_isPremiumUser) return null;
     if (_scenePreviewMode == ScenePreviewMode.off) return null;
     if (button.action.type != ButtonActionType.switchScene) return null;
     final sceneName = _resolveSceneNameFromButtonTarget(button.action);
@@ -327,7 +368,8 @@ class ControllerController extends StateNotifier<ControllerScreenState> {
     _scenePreviewRefreshTimer?.cancel();
     _activeScenePreviewRefreshTimer?.cancel();
 
-    if (!_isAppInForeground ||
+    if (!_isPremiumUser ||
+        !_isAppInForeground ||
         _scenePreviewMode != ScenePreviewMode.autoRefresh10s) {
       return;
     }
@@ -352,7 +394,7 @@ class ControllerController extends StateNotifier<ControllerScreenState> {
     required List<SceneItem> scenes,
     required bool refreshExisting,
   }) async {
-    if (_scenePreviewMode == ScenePreviewMode.off) return;
+    if (!_isPremiumUser || _scenePreviewMode == ScenePreviewMode.off) return;
 
     final targets = _sceneTargetsForCurrentPage(scenes);
     if (targets.isEmpty) return;
@@ -366,6 +408,7 @@ class ControllerController extends StateNotifier<ControllerScreenState> {
 
   Future<void> _refreshActiveScenePreview(
       {required bool refreshExisting}) async {
+    if (!_isPremiumUser) return;
     if (_scenePreviewMode != ScenePreviewMode.autoRefresh10s) return;
     final activeScene = state.obsState.currentScene;
     if (activeScene == null || activeScene.trim().isEmpty) return;
@@ -383,6 +426,8 @@ class ControllerController extends StateNotifier<ControllerScreenState> {
     final micTarget = _resolveMicAudioTarget(obs);
     final streamRunning = _isStreamRunning(obs.streamStatus);
     final recordingRunning = _isRecordingRunning(obs.recordingStatus);
+    final virtualCameraRunning = obs.virtualCameraActive;
+    final studioModeEnabled = obs.studioModeEnabled;
     final micSource = micTarget == null
         ? null
         : obs.audioSources
@@ -434,6 +479,36 @@ class ControllerController extends StateNotifier<ControllerScreenState> {
         position: 2,
         longPressTrigger: true,
       ),
+      ControllerButton(
+        id: 'quick_virtual_cam',
+        label: virtualCameraRunning
+            ? 'Stop Virtual Camera'
+            : 'Start Virtual Camera',
+        icon: virtualCameraRunning ? 'videocam_off' : 'videocam',
+        activeColor: '#EF4444',
+        inactiveColor: '#0E7490',
+        category: DeckButtonCategory.utility,
+        action: ButtonAction(
+          type: virtualCameraRunning
+              ? ButtonActionType.stopVirtualCamera
+              : ButtonActionType.startVirtualCamera,
+        ),
+        position: 3,
+      ),
+      ControllerButton(
+        id: 'quick_studio_mode',
+        label: studioModeEnabled ? 'Disable Studio Mode' : 'Enable Studio Mode',
+        icon: studioModeEnabled ? 'tune' : 'preview',
+        activeColor: '#F59E0B',
+        inactiveColor: '#1D4ED8',
+        category: DeckButtonCategory.utility,
+        action: ButtonAction(
+          type: studioModeEnabled
+              ? ButtonActionType.disableStudioMode
+              : ButtonActionType.enableStudioMode,
+        ),
+        position: 4,
+      ),
     ];
   }
 
@@ -443,6 +518,10 @@ class ControllerController extends StateNotifier<ControllerScreenState> {
     if (state.interactionMode == ControllerInteractionMode.edit) {
       selectButton(button.id);
       return ControllerButtonInteractionOutcome.selectedInEditMode;
+    }
+
+    if (_isPremiumActionLocked(button.action)) {
+      return ControllerButtonInteractionOutcome.blockedByPremium;
     }
 
     if (_isVolunteerBlocked(button)) {
@@ -467,6 +546,10 @@ class ControllerController extends StateNotifier<ControllerScreenState> {
     if (state.interactionMode == ControllerInteractionMode.edit) {
       selectButton(button.id);
       return ControllerButtonInteractionOutcome.openEditor;
+    }
+
+    if (_isPremiumActionLocked(button.action)) {
+      return ControllerButtonInteractionOutcome.blockedByPremium;
     }
 
     if (_isVolunteerBlocked(button)) {
@@ -643,6 +726,7 @@ class ControllerController extends StateNotifier<ControllerScreenState> {
   }
 
   ControllerAlertBanner? _streamHealthWarning(ObsRuntimeState obs) {
+    if (!_isPremiumUser) return null;
     if (obs.streamStatus != StreamStatus.live) return null;
 
     if (obs.outputReconnecting) {
@@ -889,8 +973,17 @@ class ControllerController extends StateNotifier<ControllerScreenState> {
     return normalizedId == 'emergency' || normalizedName == 'emergency';
   }
 
+  int _countFreePlanPages(List<ControllerPage> pages) {
+    return pages.where((page) => !_isEmergencyPage(page)).length;
+  }
+
   List<ControllerButton> _buildObsSceneButtons(List<SceneItem> scenes) {
-    return scenes.asMap().entries.map((entry) {
+    final maxScenes = _isPremiumUser
+        ? scenes.length
+        : AppConstants.freeSceneButtonLimit.clamp(0, scenes.length);
+    final visibleScenes = scenes.take(maxScenes).toList(growable: false);
+
+    final next = visibleScenes.asMap().entries.map((entry) {
       final position = entry.key;
       final scene = entry.value;
       return ControllerButton(
@@ -906,7 +999,29 @@ class ControllerController extends StateNotifier<ControllerScreenState> {
         ),
         position: position,
       );
-    }).toList();
+    }).toList(growable: true);
+
+    if (!_isPremiumUser && scenes.length > AppConstants.freeSceneButtonLimit) {
+      next.add(
+        ControllerButton(
+          id: 'premium_unlock_scenes',
+          label: 'Unlock More Scenes',
+          icon: 'lock',
+          activeColor: '#EAB308',
+          inactiveColor: '#A16207',
+          category: DeckButtonCategory.utility,
+          action: const ButtonAction(
+            type: ButtonActionType.runMacro,
+            metadata: <String, dynamic>{
+              'premiumFeature': 'unlimitedScenes',
+            },
+          ),
+          position: next.length,
+        ),
+      );
+    }
+
+    return next;
   }
 
   String _sceneButtonIdPart(String value) {
@@ -925,7 +1040,18 @@ class ControllerController extends StateNotifier<ControllerScreenState> {
     for (var i = 0; i < current.length; i++) {
       final existing = current[i];
       final candidate = next[i];
-      if (existing.action.type != ButtonActionType.switchScene) return false;
+      final existingPremiumLock = existing.action.metadata['premiumFeature'];
+      final candidatePremiumLock = candidate.action.metadata['premiumFeature'];
+      if (existingPremiumLock != null || candidatePremiumLock != null) {
+        if (existingPremiumLock != candidatePremiumLock) return false;
+        if (existing.label != candidate.label) return false;
+        if (existing.position != candidate.position) return false;
+        continue;
+      }
+      if (existing.action.type != ButtonActionType.switchScene ||
+          candidate.action.type != ButtonActionType.switchScene) {
+        return false;
+      }
       if (existing.action.targetId != candidate.action.targetId) return false;
       if (existing.label != candidate.label) return false;
       if (existing.position != candidate.position) return false;
@@ -934,6 +1060,10 @@ class ControllerController extends StateNotifier<ControllerScreenState> {
   }
 
   List<ControllerButton> _buildEmergencyButtons(ObsRuntimeState obsState) {
+    if (!_isPremiumUser) {
+      return _buildLockedEmergencyButtons();
+    }
+
     final safeSceneTarget = _resolveSafeSceneTarget(obsState);
     final brbSceneTarget = _resolveBrbSceneTarget(obsState);
     final micTarget = _resolveMicAudioTarget(obsState);
@@ -1086,6 +1216,41 @@ class ControllerController extends StateNotifier<ControllerScreenState> {
     ];
   }
 
+  List<ControllerButton> _buildLockedEmergencyButtons() {
+    const labels = <(String, String)>[
+      ('Safe Scene', 'tv_off'),
+      ('BRB Scene', 'airplay'),
+      ('Mute Mic', 'mic_off'),
+      ('Mute All', 'volume_off'),
+      ('Hide Camera', 'videocam_off'),
+      ('Hide Overlays', 'layers_clear'),
+      ('Mute Desktop', 'volume_mute'),
+      ('Stop Stream', 'stop_circle'),
+      ('Stop Recording', 'stop'),
+      ('Restart Stream', 'autorenew'),
+    ];
+
+    return labels.asMap().entries.map((entry) {
+      final index = entry.key;
+      final (label, icon) = entry.value;
+      return ControllerButton(
+        id: 'emer_lock_${index + 1}',
+        label: label,
+        icon: icon,
+        activeColor: '#EAB308',
+        inactiveColor: '#A16207',
+        category: DeckButtonCategory.utility,
+        action: const ButtonAction(
+          type: ButtonActionType.runMacro,
+          metadata: <String, dynamic>{
+            'premiumFeature': 'emergencyPage',
+          },
+        ),
+        position: index,
+      );
+    }).toList(growable: false);
+  }
+
   String? _resolveSafeSceneTarget(ObsRuntimeState obsState) {
     if (obsState.scenes.isEmpty) return null;
 
@@ -1170,6 +1335,10 @@ class ControllerController extends StateNotifier<ControllerScreenState> {
   }
 
   bool _isActionEnabled(ButtonAction action) {
+    if (_isPremiumActionLocked(action)) {
+      return true;
+    }
+
     final obs = state.obsState;
     if (obs.connectionStatus != ConnectionStatus.connected) {
       return false;
@@ -1223,12 +1392,26 @@ class ControllerController extends StateNotifier<ControllerScreenState> {
       case ButtonActionType.toggleRecording:
         return obs.recordingStatus != RecordingStatus.starting &&
             obs.recordingStatus != RecordingStatus.stopping;
+      case ButtonActionType.startVirtualCamera:
+        return !obs.virtualCameraActive;
+      case ButtonActionType.stopVirtualCamera:
+        return obs.virtualCameraActive;
+      case ButtonActionType.toggleVirtualCamera:
+        return true;
+      case ButtonActionType.enableStudioMode:
+        return !obs.studioModeEnabled;
+      case ButtonActionType.disableStudioMode:
+        return obs.studioModeEnabled;
+      case ButtonActionType.toggleStudioMode:
+        return true;
       case ButtonActionType.runMacro:
         return true;
     }
   }
 
   bool _isActionActive(ButtonAction action) {
+    if (_isPremiumActionLocked(action)) return false;
+
     final obs = state.obsState;
     final streamActive = _isStreamRunning(obs.streamStatus);
     final recordingActive = _isRecordingRunning(obs.recordingStatus);
@@ -1285,6 +1468,16 @@ class ControllerController extends StateNotifier<ControllerScreenState> {
         return obs.recordingStatus == RecordingStatus.paused;
       case ButtonActionType.resumeRecording:
         return obs.recordingStatus == RecordingStatus.recording;
+      case ButtonActionType.startVirtualCamera:
+        return !obs.virtualCameraActive;
+      case ButtonActionType.stopVirtualCamera:
+      case ButtonActionType.toggleVirtualCamera:
+        return obs.virtualCameraActive;
+      case ButtonActionType.enableStudioMode:
+        return !obs.studioModeEnabled;
+      case ButtonActionType.disableStudioMode:
+      case ButtonActionType.toggleStudioMode:
+        return obs.studioModeEnabled;
       case ButtonActionType.runMacro:
         return false;
     }
@@ -1431,7 +1624,7 @@ class ControllerController extends StateNotifier<ControllerScreenState> {
     required bool refreshExisting,
     Set<String>? restrictToSceneNames,
   }) async {
-    if (_scenePreviewMode == ScenePreviewMode.off) return;
+    if (!_isPremiumUser || _scenePreviewMode == ScenePreviewMode.off) return;
     if (_isSyncingThumbnails) return;
     if (!_isAppInForeground) return;
     if (state.obsState.connectionStatus != ConnectionStatus.connected) return;
@@ -1495,6 +1688,20 @@ class ControllerController extends StateNotifier<ControllerScreenState> {
     } finally {
       _isSyncingThumbnails = false;
     }
+  }
+
+  bool _isPremiumActionLocked(ButtonAction action) {
+    if (_isPremiumUser) return false;
+
+    if (action.metadata['premiumFeature'] != null) {
+      return true;
+    }
+
+    if (action.type == ButtonActionType.runMacro) {
+      return true;
+    }
+
+    return false;
   }
 
   bool _stringMapEquals(Map<String, String> a, Map<String, String> b) {

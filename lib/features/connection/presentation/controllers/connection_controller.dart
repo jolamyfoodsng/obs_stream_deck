@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/services/obs_auto_discovery_service.dart';
+import '../../../../domain/entities/connection_method.dart';
 import '../../../../domain/entities/connection_status.dart';
 import '../../../../domain/entities/discovered_obs_device.dart';
 import '../../../../domain/entities/obs_connection_config.dart';
@@ -18,6 +19,7 @@ class ConnectionScreenState {
     required this.host,
     required this.port,
     required this.password,
+    required this.connectionMethod,
     required this.autoReconnect,
     required this.rememberConnectionInfo,
     required this.status,
@@ -32,6 +34,7 @@ class ConnectionScreenState {
   final String host;
   final String port;
   final String password;
+  final ConnectionMethod connectionMethod;
   final bool autoReconnect;
   final bool rememberConnectionInfo;
   final ConnectionStatus status;
@@ -47,6 +50,7 @@ class ConnectionScreenState {
       host: host.trim(),
       port: int.tryParse(port.trim()) ?? 4455,
       password: password,
+      connectionMethod: connectionMethod,
       autoReconnect: autoReconnect,
       rememberConnectionInfo: rememberConnectionInfo,
     );
@@ -56,6 +60,7 @@ class ConnectionScreenState {
     String? host,
     String? port,
     String? password,
+    ConnectionMethod? connectionMethod,
     bool? autoReconnect,
     bool? rememberConnectionInfo,
     ConnectionStatus? status,
@@ -70,6 +75,7 @@ class ConnectionScreenState {
       host: host ?? this.host,
       port: port ?? this.port,
       password: password ?? this.password,
+      connectionMethod: connectionMethod ?? this.connectionMethod,
       autoReconnect: autoReconnect ?? this.autoReconnect,
       rememberConnectionInfo:
           rememberConnectionInfo ?? this.rememberConnectionInfo,
@@ -99,6 +105,7 @@ class ConnectionController extends StateNotifier<ConnectionScreenState> {
             host: '127.0.0.1',
             port: '4455',
             password: '',
+            connectionMethod: ConnectionMethod.autoDetect,
             autoReconnect: true,
             rememberConnectionInfo: true,
             status: ConnectionStatus.disconnected,
@@ -124,6 +131,7 @@ class ConnectionController extends StateNotifier<ConnectionScreenState> {
         host: savedConfig.host,
         port: savedConfig.port.toString(),
         password: savedConfig.password,
+        connectionMethod: savedConfig.connectionMethod,
         autoReconnect: savedConfig.autoReconnect,
         rememberConnectionInfo: savedConfig.rememberConnectionInfo,
       );
@@ -154,6 +162,51 @@ class ConnectionController extends StateNotifier<ConnectionScreenState> {
   void updatePort(String value) => state = state.copyWith(port: value);
 
   void updatePassword(String value) => state = state.copyWith(password: value);
+
+  void updateConnectionMethod(ConnectionMethod method) {
+    if (method == state.connectionMethod) return;
+
+    switch (method) {
+      case ConnectionMethod.usb:
+        state = state.copyWith(
+          connectionMethod: method,
+          host: _defaultUsbHostForPlatform(),
+          port: state.port.trim().isEmpty ? '4455' : state.port,
+          statusMessage:
+              'USB mode selected. Connect USB and run ADB reverse, then connect.',
+        );
+        return;
+      case ConnectionMethod.autoDetect:
+        state = state.copyWith(
+          connectionMethod: method,
+          statusMessage: 'Tap Find OBS Automatically to scan your network.',
+        );
+        return;
+      case ConnectionMethod.wifi:
+        state = state.copyWith(
+          connectionMethod: method,
+          statusMessage:
+              'Use your OBS computer local Wi-Fi IP, then connect or test.',
+        );
+        return;
+      case ConnectionMethod.manual:
+        state = state.copyWith(
+          connectionMethod: method,
+          statusMessage: 'Enter host, port, and password manually.',
+        );
+        return;
+    }
+  }
+
+  void applyUsbDefaults() {
+    state = state.copyWith(
+      connectionMethod: ConnectionMethod.usb,
+      host: _defaultUsbHostForPlatform(),
+      port: '4455',
+      statusMessage:
+          'USB defaults applied. Run ADB reverse and tap Connect/Test.',
+    );
+  }
 
   void updateAutoReconnect(bool value) {
     state = state.copyWith(autoReconnect: value);
@@ -212,6 +265,7 @@ class ConnectionController extends StateNotifier<ConnectionScreenState> {
     state = state.copyWith(
       host: device.host,
       port: '${device.port}',
+      connectionMethod: ConnectionMethod.autoDetect,
       connectionLabel: 'OBS ${device.host}',
       statusMessage: device.requiresPassword
           ? 'OBS found at ${device.host}. Enter password, then connect.'
@@ -235,6 +289,7 @@ class ConnectionController extends StateNotifier<ConnectionScreenState> {
       host: host.trim(),
       port: '$port',
       password: password,
+      connectionMethod: ConnectionMethod.wifi,
       connectionLabel: label,
       statusMessage:
           'QR details loaded. Confirm and tap Connect to OBS if needed.',
@@ -246,6 +301,7 @@ class ConnectionController extends StateNotifier<ConnectionScreenState> {
       host: saved.host,
       port: '${saved.port}',
       password: saved.password,
+      connectionMethod: ConnectionMethod.manual,
       connectionLabel: saved.label,
       statusMessage: 'Reconnecting to ${saved.label}...',
     );
@@ -267,7 +323,29 @@ class ConnectionController extends StateNotifier<ConnectionScreenState> {
         : '127.0.0.1';
   }
 
+  String _defaultUsbHostForPlatform() {
+    if (kIsWeb) return '127.0.0.1';
+    return '127.0.0.1';
+  }
+
+  void _normalizeStateForSelectedMethod() {
+    if (state.connectionMethod != ConnectionMethod.usb) return;
+
+    final host = state.host.trim();
+    final port = state.port.trim();
+    final normalizedHost = host.isEmpty ? _defaultUsbHostForPlatform() : host;
+    final normalizedPort = port.isEmpty ? '4455' : port;
+
+    if (normalizedHost == state.host && normalizedPort == state.port) return;
+
+    state = state.copyWith(
+      host: normalizedHost,
+      port: normalizedPort,
+    );
+  }
+
   Future<void> testConnection() async {
+    _normalizeStateForSelectedMethod();
     if (!_validate()) return;
 
     final wasConnected = state.status == ConnectionStatus.connected;
@@ -311,6 +389,7 @@ class ConnectionController extends StateNotifier<ConnectionScreenState> {
   }
 
   Future<void> connect() async {
+    _normalizeStateForSelectedMethod();
     if (!_validate()) return;
 
     state = state.copyWith(isBusy: true, status: ConnectionStatus.connecting);

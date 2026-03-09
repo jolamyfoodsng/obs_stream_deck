@@ -37,4 +37,5 @@ abstract class ObsWebSocketService {
     int quality = 30,
   });
   Future<void> executeAction(ButtonAction action);
+  void setAppInForeground(bool isForeground);
 }

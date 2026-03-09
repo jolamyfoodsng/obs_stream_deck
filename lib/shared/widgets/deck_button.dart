@@ -121,6 +121,9 @@ class _DeckButtonState extends State<DeckButton> {
                   final labelMaxLines = shortest < 72 ? 1 : 2;
                   final gap = shortest < 72 ? 4.0 : 8.0;
 
+                  final showHoldHint =
+                      widget.showHoldBadge && widget.button.longPressTrigger;
+
                   return Stack(
                     children: <Widget>[
                       if (thumbnailProvider != null)
@@ -137,66 +140,73 @@ class _DeckButtonState extends State<DeckButton> {
                           ),
                         ),
                       Align(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: <Widget>[
-                            Icon(
-                              IconMapper.fromName(widget.button.icon),
-                              color: enabled
-                                  ? accentColor
-                                  : Theme.of(context).colorScheme.outline,
-                              size: iconSize,
-                            ),
-                            SizedBox(height: gap),
-                            Text(
-                              widget.button.label,
-                              textAlign: TextAlign.center,
-                              maxLines: labelMaxLines,
-                              overflow: TextOverflow.ellipsis,
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .labelSmall
-                                  ?.copyWith(
-                                    fontSize: labelFontSize,
-                                    height: 1.1,
-                                    color: enabled
-                                        ? Theme.of(context)
-                                            .colorScheme
-                                            .onSurface
-                                        : Theme.of(context).colorScheme.outline,
-                                  ),
-                            ),
-                          ],
+                        child: Padding(
+                          padding: EdgeInsets.only(
+                            bottom: showHoldHint ? (compact ? 12 : 14) : 0,
+                          ),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: <Widget>[
+                              Icon(
+                                IconMapper.fromName(widget.button.icon),
+                                color: enabled
+                                    ? accentColor
+                                    : Theme.of(context).colorScheme.outline,
+                                size: iconSize,
+                              ),
+                              SizedBox(height: gap),
+                              Text(
+                                widget.button.label,
+                                textAlign: TextAlign.center,
+                                maxLines: labelMaxLines,
+                                overflow: TextOverflow.ellipsis,
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .labelSmall
+                                    ?.copyWith(
+                                      fontSize: labelFontSize,
+                                      height: 1.1,
+                                      color: enabled
+                                          ? Theme.of(context)
+                                              .colorScheme
+                                              .onSurface
+                                          : Theme.of(context).colorScheme.outline,
+                                    ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
-                      if (widget.showHoldBadge &&
-                          widget.button.longPressTrigger)
+                      if (showHoldHint)
                         Positioned(
-                          top: 0,
+                          left: 0,
                           right: 0,
+                          bottom: 0,
                           child: Container(
                             padding: EdgeInsets.symmetric(
-                              horizontal: compact ? 5 : 6,
-                              vertical: compact ? 1 : 2,
+                              vertical: compact ? 2 : 3,
                             ),
                             decoration: BoxDecoration(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .primaryContainer,
-                              borderRadius: BorderRadius.circular(999),
+                              color: accentColor.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(8),
                             ),
-                            child: Text(
-                              'Hold',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .labelSmall
-                                  ?.copyWith(
-                                    fontSize: compact ? 9 : null,
-                                    fontWeight: FontWeight.w700,
-                                    color: Theme.of(context)
-                                        .colorScheme
-                                        .onPrimaryContainer,
-                                  ),
+                            child: Center(
+                              child: Text(
+                                compact ? 'HOLD' : 'Hold to run',
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .labelSmall
+                                    ?.copyWith(
+                                      fontSize: compact ? 8.5 : 9.5,
+                                      letterSpacing: 0.5,
+                                      fontWeight: FontWeight.w700,
+                                      color: enabled
+                                          ? accentColor
+                                          : Theme.of(context)
+                                              .colorScheme
+                                              .outline,
+                                    ),
+                              ),
                             ),
                           ),
                         ),

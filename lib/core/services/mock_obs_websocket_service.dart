@@ -90,6 +90,7 @@ class MockObsWebSocketService implements ObsWebSocketService {
         currentScene: null,
         previewScene: null,
         studioModeEnabled: true,
+        virtualCameraActive: false,
         streamStatus: StreamStatus.offline,
         recordingStatus: RecordingStatus.stopped,
         clearLastError: true,
@@ -104,6 +105,7 @@ class MockObsWebSocketService implements ObsWebSocketService {
         connectionStatus: ConnectionStatus.disconnected,
         streamStatus: StreamStatus.offline,
         recordingStatus: RecordingStatus.stopped,
+        virtualCameraActive: false,
       ),
     );
   }
@@ -232,10 +234,34 @@ class MockObsWebSocketService implements ObsWebSocketService {
             : RecordingStatus.stopped;
         _emitState(_state.copyWith(recordingStatus: next));
         break;
+      case ButtonActionType.startVirtualCamera:
+        _emitState(_state.copyWith(virtualCameraActive: true));
+        break;
+      case ButtonActionType.stopVirtualCamera:
+        _emitState(_state.copyWith(virtualCameraActive: false));
+        break;
+      case ButtonActionType.toggleVirtualCamera:
+        _emitState(
+          _state.copyWith(virtualCameraActive: !_state.virtualCameraActive),
+        );
+        break;
+      case ButtonActionType.enableStudioMode:
+        _emitState(_state.copyWith(studioModeEnabled: true));
+        break;
+      case ButtonActionType.disableStudioMode:
+        _emitState(_state.copyWith(studioModeEnabled: false));
+        break;
+      case ButtonActionType.toggleStudioMode:
+        _emitState(
+            _state.copyWith(studioModeEnabled: !_state.studioModeEnabled));
+        break;
       case ButtonActionType.runMacro:
         break;
     }
   }
+
+  @override
+  void setAppInForeground(bool isForeground) {}
 
   void _toggleMute(String? targetId, bool all) {
     if (all) {

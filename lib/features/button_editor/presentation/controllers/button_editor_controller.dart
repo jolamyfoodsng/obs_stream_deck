@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/utils/macro_plan_access.dart';
 import '../../../../domain/entities/button_action.dart';
 import '../../../../domain/entities/controller_button.dart';
 import '../../../../domain/entities/controller_page.dart';
@@ -93,10 +94,12 @@ class ButtonEditorController extends StateNotifier<ButtonEditorState> {
     required MacroRepository macroRepository,
     required ObsRepository obsRepository,
     required ExecuteButtonActionUseCase executeButtonAction,
+    required Ref ref,
   })  : _controllerRepository = controllerRepository,
         _macroRepository = macroRepository,
         _obsRepository = obsRepository,
         _executeButtonAction = executeButtonAction,
+        _ref = ref,
         super(ButtonEditorState.initial()) {
     _init();
   }
@@ -106,6 +109,7 @@ class ButtonEditorController extends StateNotifier<ButtonEditorState> {
   final MacroRepository _macroRepository;
   final ObsRepository _obsRepository;
   final ExecuteButtonActionUseCase _executeButtonAction;
+  final Ref _ref;
 
   StreamSubscription? _obsSub;
   List<ControllerPage> _pages = <ControllerPage>[];
@@ -216,6 +220,13 @@ class ButtonEditorController extends StateNotifier<ButtonEditorState> {
       return false;
     }
 
+    if (isActionPremiumLocked(state.button.action.type)) {
+      state = state.copyWith(
+        error: 'Run Macro is available on DeckPilot Premium.',
+      );
+      return false;
+    }
+
     final actionDefinition =
         ObsActionCatalog.definitionForButtonType(state.button.action.type);
     if (actionDefinition.requiresTarget) {
@@ -291,6 +302,10 @@ class ButtonEditorController extends StateNotifier<ButtonEditorState> {
     return ObsActionCatalog.buttonActions();
   }
 
+  bool isActionPremiumLocked(ButtonActionType type) {
+    return false;
+  }
+
   ObsActionDefinition actionDefinition(ButtonActionType type) {
     return ObsActionCatalog.definitionForButtonType(type);
   }
@@ -347,7 +362,10 @@ class ButtonEditorController extends StateNotifier<ButtonEditorState> {
             )
             .toList(growable: false);
       case ObsActionTargetKind.macro:
-        return _macros
+        return MacroPlanAccess.accessibleMacros(
+          isPremium: _ref.read(premiumControllerProvider).isPremium,
+          macros: _macros,
+        )
             .map(
               (macro) => ActionTargetOption(
                 id: macro.id,
@@ -399,6 +417,13 @@ class ButtonEditorController extends StateNotifier<ButtonEditorState> {
       case ObsActionCode.resumeRecording:
       case ObsActionCode.toggleRecording:
         return DeckButtonCategory.recording;
+      case ObsActionCode.startVirtualCamera:
+      case ObsActionCode.stopVirtualCamera:
+      case ObsActionCode.toggleVirtualCamera:
+      case ObsActionCode.enableStudioMode:
+      case ObsActionCode.disableStudioMode:
+      case ObsActionCode.toggleStudioMode:
+        return DeckButtonCategory.utility;
       case ObsActionCode.runMacro:
         return DeckButtonCategory.macro;
       case ObsActionCode.delay:
@@ -469,6 +494,7 @@ final buttonEditorControllerProvider = StateNotifierProvider.autoDispose
     macroRepository: ref.watch(macroRepositoryProvider),
     obsRepository: ref.watch(obsRepositoryProvider),
     executeButtonAction: ref.watch(executeButtonActionUseCaseProvider),
+    ref: ref,
   );
 });
 

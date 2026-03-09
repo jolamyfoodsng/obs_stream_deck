@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/constants/app_constants.dart';
+import '../../../../core/utils/macro_plan_access.dart';
 import '../../../../domain/entities/button_action.dart';
 import '../../../../domain/entities/controller_button.dart';
 import '../../../../domain/entities/controller_page.dart';
@@ -64,11 +65,6 @@ class MacroLibraryController extends StateNotifier<MacroLibraryState> {
   final ControllerRepository _controllerRepository;
   final RunMacroUseCase _runMacro;
 
-  static const Set<String> _protectedMacroIds = <String>{
-    'macro_restart_stream',
-    'macro_emergency_reset',
-  };
-
   Future<void> refresh() async {
     state = state.copyWith(isLoading: true);
     final macros = await _macroRepository.loadMacros();
@@ -114,7 +110,7 @@ class MacroLibraryController extends StateNotifier<MacroLibraryState> {
   }
 
   Future<void> deleteMacro(String macroId) async {
-    if (_protectedMacroIds.contains(macroId)) {
+    if (MacroPlanAccess.isSystemMacroId(macroId)) {
       throw Exception('This macro is system-managed and cannot be deleted.');
     }
 
@@ -204,7 +200,7 @@ class MacroLibraryController extends StateNotifier<MacroLibraryState> {
     return configured > nextFreePosition ? configured : nextFreePosition;
   }
 
-  bool isSystemMacro(String macroId) => _protectedMacroIds.contains(macroId);
+  bool isSystemMacro(String macroId) => MacroPlanAccess.isSystemMacroId(macroId);
 
   String _nextDuplicateName(String base, List<MacroDefinition> macros) {
     final names = macros.map((macro) => macro.name.toLowerCase()).toSet();

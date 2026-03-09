@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 enum AppBottomNavTab { control, pages, macros, monitor, settings }
 
-class AppBottomNav extends StatelessWidget {
+class AppBottomNav extends ConsumerWidget {
   const AppBottomNav({
     super.key,
     required this.currentTab,
@@ -14,10 +15,10 @@ class AppBottomNav extends StatelessWidget {
   final Map<AppBottomNavTab, GlobalKey>? tabKeys;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return NavigationBar(
       selectedIndex: currentTab.index,
-      onDestinationSelected: (index) {
+      onDestinationSelected: (index) async {
         final tab = AppBottomNavTab.values[index];
         switch (tab) {
           case AppBottomNavTab.control:

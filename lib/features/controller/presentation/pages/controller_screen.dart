@@ -11,10 +11,12 @@ import '../../../../domain/entities/connection_status.dart';
 import '../../../../domain/entities/controller_button.dart';
 import '../../../../domain/entities/controller_page.dart';
 import '../../../../domain/entities/obs_runtime_state.dart';
+import '../../../../domain/entities/premium_feature.dart';
 import '../../../../domain/entities/recording_status.dart';
 import '../../../../domain/entities/scene_preview_mode.dart';
 import '../../../../domain/entities/stream_status.dart';
 import '../../../../shared/extensions/context_extensions.dart';
+import '../../../../shared/extensions/duration_extensions.dart';
 import '../../../../shared/state/app_engagement_controller.dart';
 import '../../../../shared/state/app_providers.dart';
 import '../../../../shared/state/deck_button_runtime_state.dart';
@@ -22,6 +24,8 @@ import '../../../../shared/volunteer/volunteer_mode_policy.dart';
 import '../../../../shared/widgets/app_bottom_nav.dart';
 import '../../../../shared/widgets/deck_button_grid.dart';
 import '../../../../shared/widgets/page_indicator.dart';
+import '../../../../shared/widgets/page_helper_text.dart';
+import '../../../../shared/widgets/premium_upgrade_modal.dart';
 import '../controllers/controller_controller.dart';
 import '../models/controller_alert_banner.dart';
 
@@ -47,6 +51,7 @@ class _ControllerScreenState extends ConsumerState<ControllerScreen>
   bool _appliedInitialPage = false;
   int _lastSyncedPageIndex = 0;
   bool _tutorialShowing = false;
+  bool _tabletPageListOpen = true;
 
   @override
   void initState() {
@@ -95,6 +100,7 @@ class _ControllerScreenState extends ConsumerState<ControllerScreen>
     final controller = ref.read(controllerControllerProvider.notifier);
     final volunteerMode = ref.watch(volunteerModeProvider);
     final scenePreviewMode = ref.watch(scenePreviewModeProvider);
+    final premium = ref.watch(premiumControllerProvider);
     final engagement = ref.watch(appEngagementControllerProvider);
     final isEditMode = !volunteerMode &&
         state.interactionMode == ControllerInteractionMode.edit;
@@ -164,11 +170,21 @@ class _ControllerScreenState extends ConsumerState<ControllerScreen>
         unawaited(_onButtonLongPress(controller, button));
       },
     );
+    final controllerHelperText = PageHelperText(
+      text: isEditMode
+          ? 'Control your OBS setup with custom buttons. Tap a button to select it. Long-press a button to edit it.'
+          : 'Control your OBS setup with custom buttons. Tap to run an action. Enter Edit Mode to long-press a button and edit it.',
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
+    );
 
     return Scaffold(
       appBar: AppBar(
         automaticallyImplyLeading: false,
-        title: Text(page?.name ?? 'Controller'),
+        title: Text(
+          _isEmergencyPage(page) && !premium.isPremium
+              ? '${page?.name ?? 'Emergency'} (PRO)'
+              : (page?.name ?? 'Controller'),
+        ),
         actions: <Widget>[
           if (!volunteerMode)
             SizedBox(
@@ -218,6 +234,7 @@ class _ControllerScreenState extends ConsumerState<ControllerScreen>
             ? const Center(child: CircularProgressIndicator())
             : useTabletLayout
                 ? _TabletControllerLayout(
+                    pageHelperText: controllerHelperText,
                     volunteerBanner: volunteerBannerWidget,
                     alertBanner: alertBannerWidget,
                     editModeBanner: editModeBannerWidget,
@@ -239,9 +256,17 @@ class _ControllerScreenState extends ConsumerState<ControllerScreen>
                       volunteerMode: volunteerMode,
                       isEditMode: isEditMode,
                       useTabletLayout: true,
+                      pageListOpen: _tabletPageListOpen,
                     ),
+                    pageListOpen: _tabletPageListOpen,
+                    onTogglePageList: () {
+                      setState(() {
+                        _tabletPageListOpen = !_tabletPageListOpen;
+                      });
+                    },
                   )
                 : _PhoneControllerLayout(
+                    pageHelperText: controllerHelperText,
                     volunteerBanner: volunteerBannerWidget,
                     alertBanner: alertBannerWidget,
                     editModeBanner: editModeBannerWidget,
@@ -262,6 +287,7 @@ class _ControllerScreenState extends ConsumerState<ControllerScreen>
                       volunteerMode: volunteerMode,
                       isEditMode: isEditMode,
                       useTabletLayout: false,
+                      pageListOpen: true,
                     ),
                     onDotTap: controller.setPageIndex,
                   ),
@@ -286,6 +312,7 @@ class _ControllerScreenState extends ConsumerState<ControllerScreen>
     required bool volunteerMode,
     required bool isEditMode,
     required bool useTabletLayout,
+    required bool pageListOpen,
   }) {
     final obsState = state.obsState;
     final pageButtons = volunteerMode
@@ -303,6 +330,7 @@ class _ControllerScreenState extends ConsumerState<ControllerScreen>
       context,
       page,
       useTabletLayout: useTabletLayout,
+      pageListOpen: pageListOpen,
     );
 
     final showScenesDisconnectedState =
@@ -353,7 +381,7 @@ class _ControllerScreenState extends ConsumerState<ControllerScreen>
             showEmptySlots: isEditMode && !isScenesPage,
             resolveButtonState: controller.resolveButtonState,
             selectedButtonId: state.selectedButtonId,
-            showHoldBadges: false,
+            showHoldBadges: !isEditMode,
             thumbnailForButton: controller.sceneThumbnailForButton,
             allowDisabledButtonInteraction: isEditMode,
             onButtonTap: (button) {
@@ -627,25 +655,33 @@ class _ControllerScreenState extends ConsumerState<ControllerScreen>
     BuildContext context,
     ControllerPage page, {
     required bool useTabletLayout,
+    required bool pageListOpen,
   }) {
     final base = _resolveColumns(context, page);
     if (!useTabletLayout) return base;
 
     if (_isEmergencyPage(page)) {
-      return base.clamp(4, 5).toInt();
+      final maxColumns = pageListOpen ? 5 : 6;
+      return base.clamp(4, maxColumns).toInt();
     }
 
-    final widened = base + (context.isDesktop ? 1 : 0);
-    return widened.clamp(4, 7).toInt();
+    final bonusColumns = pageListOpen
+        ? (context.isDesktop ? 1 : 0)
+        : (context.isDesktop ? 2 : 1);
+    final maxColumns = pageListOpen ? 7 : 8;
+    final widened = base + bonusColumns;
+    return widened.clamp(4, maxColumns).toInt();
   }
 
-  bool _isEmergencyPage(ControllerPage page) {
+  bool _isEmergencyPage(ControllerPage? page) {
+    if (page == null) return false;
     final id = page.id.trim().toLowerCase();
     final name = page.name.trim().toLowerCase();
     return id == 'emergency' || name == 'emergency';
   }
 
-  bool _isScenesPage(ControllerPage page) {
+  bool _isScenesPage(ControllerPage? page) {
+    if (page == null) return false;
     final id = page.id.trim().toLowerCase();
     final name = page.name.trim().toLowerCase();
     return id == 'scenes' || name == 'scenes';
@@ -667,6 +703,14 @@ class _ControllerScreenState extends ConsumerState<ControllerScreen>
             duration: Duration(milliseconds: 1300),
           ),
         );
+      return;
+    }
+
+    if (outcome == ControllerButtonInteractionOutcome.blockedByPremium) {
+      await showPremiumUpgradeModal(
+        context,
+        highlightedFeature: _featureForButton(button),
+      );
       return;
     }
 
@@ -693,6 +737,14 @@ class _ControllerScreenState extends ConsumerState<ControllerScreen>
       await context.push('/button-editor?buttonId=${button.id}');
       if (!mounted) return;
       await controller.refreshPages();
+      return;
+    }
+
+    if (outcome == ControllerButtonInteractionOutcome.blockedByPremium) {
+      await showPremiumUpgradeModal(
+        context,
+        highlightedFeature: _featureForButton(button),
+      );
       return;
     }
 
@@ -739,7 +791,13 @@ class _ControllerScreenState extends ConsumerState<ControllerScreen>
     );
 
     if (result == null) return;
-    await controller.createPage(name: result.name);
+    final pageId = await controller.createPage(name: result.name);
+    if (!mounted) return;
+    if (pageId == null) {
+      await _showPageLimitReachedDialog();
+      return;
+    }
+    context.go('/controller?pageId=$pageId');
   }
 
   Future<void> _onRefreshScenePreviews(
@@ -756,6 +814,50 @@ class _ControllerScreenState extends ConsumerState<ControllerScreen>
           duration: Duration(milliseconds: 1200),
         ),
       );
+  }
+
+  PremiumFeature _featureForButton(ControllerButton button) {
+    final raw = button.action.metadata['premiumFeature'] as String?;
+    switch (raw) {
+      case 'unlimitedScenes':
+        return PremiumFeature.unlimitedScenes;
+      case 'emergencyPage':
+        return PremiumFeature.emergencyPage;
+    }
+    if (button.action.type == ButtonActionType.runMacro) {
+      return PremiumFeature.macros;
+    }
+    return PremiumFeature.unlimitedScenes;
+  }
+
+  Future<void> _showPageLimitReachedDialog() async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Page limit reached'),
+          content: const Text(
+            'Free users can create only 1 deck page. Upgrade to Premium to unlock unlimited pages.',
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () async {
+                Navigator.of(dialogContext).pop();
+                await showPremiumUpgradeModal(
+                  context,
+                  highlightedFeature: PremiumFeature.unlimitedPages,
+                );
+              },
+              child: const Text('Upgrade to Premium'),
+            ),
+          ],
+        );
+      },
+    );
   }
 }
 
@@ -869,6 +971,7 @@ class _TutorialCard extends StatelessWidget {
 
 class _PhoneControllerLayout extends StatelessWidget {
   const _PhoneControllerLayout({
+    required this.pageHelperText,
     required this.volunteerBanner,
     required this.alertBanner,
     required this.editModeBanner,
@@ -882,6 +985,7 @@ class _PhoneControllerLayout extends StatelessWidget {
     required this.onDotTap,
   });
 
+  final Widget pageHelperText;
   final Widget volunteerBanner;
   final Widget alertBanner;
   final Widget editModeBanner;
@@ -898,6 +1002,7 @@ class _PhoneControllerLayout extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: <Widget>[
+        pageHelperText,
         volunteerBanner,
         alertBanner,
         editModeBanner,
@@ -931,6 +1036,7 @@ class _PhoneControllerLayout extends StatelessWidget {
 
 class _TabletControllerLayout extends StatelessWidget {
   const _TabletControllerLayout({
+    required this.pageHelperText,
     required this.volunteerBanner,
     required this.alertBanner,
     required this.editModeBanner,
@@ -942,8 +1048,11 @@ class _TabletControllerLayout extends StatelessWidget {
     required this.onPageSelected,
     required this.onCreatePage,
     required this.pageContentBuilder,
+    required this.pageListOpen,
+    required this.onTogglePageList,
   });
 
+  final Widget pageHelperText;
   final Widget volunteerBanner;
   final Widget alertBanner;
   final Widget editModeBanner;
@@ -955,6 +1064,8 @@ class _TabletControllerLayout extends StatelessWidget {
   final ValueChanged<int> onPageSelected;
   final VoidCallback? onCreatePage;
   final Widget Function(ControllerPage page) pageContentBuilder;
+  final bool pageListOpen;
+  final VoidCallback onTogglePageList;
 
   @override
   Widget build(BuildContext context) {
@@ -964,6 +1075,7 @@ class _TabletControllerLayout extends StatelessWidget {
 
     return Column(
       children: <Widget>[
+        pageHelperText,
         volunteerBanner,
         alertBanner,
         editModeBanner,
@@ -976,18 +1088,21 @@ class _TabletControllerLayout extends StatelessWidget {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: <Widget>[
-                SizedBox(
-                  width: context.isDesktop ? 320 : 260,
-                  child: _TabletPageSidebar(
-                    pages: pages,
-                    currentPageIndex: currentPageIndex,
-                    obsState: obsState,
-                    volunteerMode: volunteerMode,
-                    onPageSelected: onPageSelected,
-                    onCreatePage: onCreatePage,
+                if (pageListOpen) ...<Widget>[
+                  SizedBox(
+                    width: context.isDesktop ? 320 : 260,
+                    child: _TabletPageSidebar(
+                      pages: pages,
+                      currentPageIndex: currentPageIndex,
+                      obsState: obsState,
+                      volunteerMode: volunteerMode,
+                      onPageSelected: onPageSelected,
+                      onCreatePage: onCreatePage,
+                      onClose: onTogglePageList,
+                    ),
                   ),
-                ),
-                const SizedBox(width: 12),
+                  const SizedBox(width: 12),
+                ],
                 Expanded(
                   child: DecoratedBox(
                     decoration: BoxDecoration(
@@ -999,9 +1114,38 @@ class _TabletControllerLayout extends StatelessWidget {
                             .withValues(alpha: 0.35),
                       ),
                     ),
-                    child: page == null
-                        ? _NoPagesState(onCreatePage: onCreatePage)
-                        : pageContentBuilder(page),
+                    child: Column(
+                      children: <Widget>[
+                        _TabletContentHeader(
+                          page: page,
+                          pageCount: pages.length,
+                          currentPageIndex: currentPageIndex,
+                          pageListOpen: pageListOpen,
+                          onTogglePageList: onTogglePageList,
+                        ),
+                        Divider(
+                          height: 1,
+                          color: Theme.of(context)
+                              .colorScheme
+                              .outlineVariant
+                              .withValues(alpha: 0.35),
+                        ),
+                        Expanded(
+                          child: page == null
+                              ? _NoPagesState(onCreatePage: onCreatePage)
+                              : pageContentBuilder(page),
+                        ),
+                        if (!pageListOpen && pages.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+                            child: PageIndicator(
+                              count: pages.length,
+                              currentIndex: currentPageIndex,
+                              onDotTap: onPageSelected,
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
                 ),
               ],
@@ -1036,6 +1180,11 @@ class _TabletStatusOverview extends StatelessWidget {
       RecordingStatus.stopped => 'Stopped',
     };
     final connected = obsState.connectionStatus == ConnectionStatus.connected;
+    final activeFpsLabel =
+        connected ? 'FPS ${obsState.activeFps.toStringAsFixed(2)}' : 'FPS --';
+    final cpuLabel = connected
+        ? 'CPU ${obsState.cpuUsagePercent.toStringAsFixed(1)}%'
+        : 'CPU --';
     final netWarning = obsState.outputReconnecting ||
         obsState.outputCongestion >= 0.15 ||
         obsState.outputSkippedFramesPercent >= 1.0;
@@ -1067,12 +1216,48 @@ class _TabletStatusOverview extends StatelessWidget {
                 ? Colors.redAccent
                 : Theme.of(context).colorScheme.onSurfaceVariant,
           ),
+          if (obsState.virtualCameraActive) ...<Widget>[
+            const SizedBox(width: 8),
+            const _TabletStatusChip(
+              icon: Icons.videocam,
+              label: 'Virtual Cam',
+              tone: Colors.cyan,
+            ),
+          ],
+          if (obsState.studioModeEnabled) ...<Widget>[
+            const SizedBox(width: 8),
+            const _TabletStatusChip(
+              icon: Icons.slideshow,
+              label: 'Studio Mode',
+              tone: Colors.blueAccent,
+            ),
+          ],
           if (netWarning) ...<Widget>[
             const SizedBox(width: 8),
             const _TabletStatusChip(
               icon: Icons.warning_amber_rounded,
               label: 'Network Warning',
               tone: Colors.orange,
+            ),
+          ],
+          const SizedBox(width: 8),
+          _TabletStatusChip(
+            icon: Icons.speed,
+            label: cpuLabel,
+            tone: Theme.of(context).colorScheme.primary,
+          ),
+          const SizedBox(width: 8),
+          _TabletStatusChip(
+            icon: Icons.animation_outlined,
+            label: activeFpsLabel,
+            tone: Theme.of(context).colorScheme.primary,
+          ),
+          if (obsState.streamStatus == StreamStatus.live) ...<Widget>[
+            const SizedBox(width: 8),
+            _TabletStatusChip(
+              icon: Icons.timer_outlined,
+              label: obsState.streamTimecode ?? obsState.uptime.toHms(),
+              tone: Theme.of(context).colorScheme.primary,
             ),
           ],
         ],
@@ -1118,6 +1303,88 @@ class _TabletStatusChip extends StatelessWidget {
   }
 }
 
+class _TabletContentHeader extends StatelessWidget {
+  const _TabletContentHeader({
+    required this.page,
+    required this.pageCount,
+    required this.currentPageIndex,
+    required this.pageListOpen,
+    required this.onTogglePageList,
+  });
+
+  final ControllerPage? page;
+  final int pageCount;
+  final int currentPageIndex;
+  final bool pageListOpen;
+  final VoidCallback onTogglePageList;
+
+  @override
+  Widget build(BuildContext context) {
+    final pageLabel = page?.name ?? 'No Page Selected';
+    final pagePosition =
+        pageCount == 0 ? '0/0' : '${currentPageIndex + 1}/$pageCount';
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      child: Row(
+        children: <Widget>[
+          IconButton.filledTonal(
+            onPressed: onTogglePageList,
+            icon: Icon(
+              pageListOpen
+                  ? Icons.view_sidebar_outlined
+                  : Icons.view_sidebar_rounded,
+            ),
+            tooltip: pageListOpen ? 'Hide Page List' : 'Show Page List',
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  pageLabel,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  pageListOpen
+                      ? 'Page list open'
+                      : 'Page list hidden. Grid expanded for tablet view.',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(999),
+              color: Theme.of(context)
+                  .colorScheme
+                  .surfaceContainerHighest
+                  .withValues(alpha: 0.42),
+            ),
+            child: Text(
+              pagePosition,
+              style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _TabletPageSidebar extends StatelessWidget {
   const _TabletPageSidebar({
     required this.pages,
@@ -1126,6 +1393,7 @@ class _TabletPageSidebar extends StatelessWidget {
     required this.volunteerMode,
     required this.onPageSelected,
     required this.onCreatePage,
+    required this.onClose,
   });
 
   final List<ControllerPage> pages;
@@ -1134,6 +1402,7 @@ class _TabletPageSidebar extends StatelessWidget {
   final bool volunteerMode;
   final ValueChanged<int> onPageSelected;
   final VoidCallback? onCreatePage;
+  final VoidCallback onClose;
 
   @override
   Widget build(BuildContext context) {
@@ -1159,6 +1428,11 @@ class _TabletPageSidebar extends StatelessWidget {
                       ),
                 ),
                 const Spacer(),
+                IconButton(
+                  onPressed: onClose,
+                  icon: const Icon(Icons.view_sidebar_outlined),
+                  tooltip: 'Hide Page List',
+                ),
                 if (onCreatePage != null)
                   IconButton.filledTonal(
                     onPressed: onCreatePage,
@@ -1521,6 +1795,8 @@ class _HeaderStatusStrip extends StatelessWidget {
             obsState.outputCongestion >= 0.15 ||
             obsState.outputSkippedFramesPercent >= 1.0 ||
             obsState.droppedFramesPercent >= 1.0);
+    final showPerformanceMetrics = MediaQuery.sizeOf(context).width >= 900 &&
+        connectionStatus == ConnectionStatus.connected;
 
     return Padding(
       padding: const EdgeInsets.only(right: 4),
@@ -1538,10 +1814,35 @@ class _HeaderStatusStrip extends StatelessWidget {
               label: 'REC',
               tone: Colors.red,
             ),
+          if (obsState.virtualCameraActive)
+            const _HeaderStatusPill(
+              label: 'CAM',
+              tone: Colors.cyan,
+            ),
+          if (obsState.studioModeEnabled)
+            const _HeaderStatusPill(
+              label: 'STUDIO',
+              tone: Colors.blueAccent,
+            ),
           if (showNetworkWarning)
             const _HeaderStatusPill(
               label: 'NET',
               tone: Colors.orange,
+            ),
+          if (showPerformanceMetrics)
+            _HeaderStatusPill(
+              label: 'CPU ${obsState.cpuUsagePercent.toStringAsFixed(1)}%',
+              tone: Theme.of(context).colorScheme.primary,
+            ),
+          if (showPerformanceMetrics)
+            _HeaderStatusPill(
+              label: 'FPS ${obsState.activeFps.toStringAsFixed(2)}',
+              tone: Theme.of(context).colorScheme.primary,
+            ),
+          if (showPerformanceMetrics && streamStatus == StreamStatus.live)
+            _HeaderStatusPill(
+              label: obsState.streamTimecode ?? obsState.uptime.toHms(),
+              tone: Theme.of(context).colorScheme.primary,
             ),
         ],
       ),
@@ -1666,6 +1967,8 @@ class _QuickControlsStrip extends StatelessWidget {
     if (effectiveButtons.isEmpty) {
       return const SizedBox.shrink();
     }
+    final hasProtectedButtons =
+        effectiveButtons.any((button) => button.longPressTrigger);
 
     return Padding(
       padding: EdgeInsets.fromLTRB(12, isTabletLayout ? 8 : 4, 12, 6),
@@ -1703,6 +2006,19 @@ class _QuickControlsStrip extends StatelessWidget {
             height: 1,
             color: colorScheme.outlineVariant.withValues(alpha: 0.45),
           ),
+          if (hasProtectedButtons) ...<Widget>[
+            const SizedBox(height: 6),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Hold protected controls to confirm.',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
+                      fontWeight: FontWeight.w600,
+                    ),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -1960,6 +2276,14 @@ IconData _quickIcon(String iconName) {
       return Icons.mic_rounded;
     case 'mic_off':
       return Icons.mic_off_outlined;
+    case 'videocam':
+      return Icons.videocam;
+    case 'videocam_off':
+      return Icons.videocam_off;
+    case 'preview':
+      return Icons.slideshow;
+    case 'tune':
+      return Icons.tune;
     case 'play_arrow':
       return Icons.play_arrow_rounded;
     case 'stop_circle':
@@ -1985,14 +2309,29 @@ Color _quickControlTone({
     return Colors.orange;
   }
 
+  if (button.action.type == ButtonActionType.enableStudioMode ||
+      button.action.type == ButtonActionType.disableStudioMode ||
+      button.action.type == ButtonActionType.toggleStudioMode) {
+    return state.enabled ? Colors.blueAccent : colorScheme.onSurfaceVariant;
+  }
+
   if (button.action.type == ButtonActionType.startStream ||
-      button.action.type == ButtonActionType.startRecording) {
+      button.action.type == ButtonActionType.startRecording ||
+      button.action.type == ButtonActionType.startVirtualCamera ||
+      button.action.type == ButtonActionType.enableStudioMode) {
     return state.enabled ? Colors.green : colorScheme.onSurfaceVariant;
   }
 
   if (button.action.type == ButtonActionType.stopStream ||
-      button.action.type == ButtonActionType.stopRecording) {
+      button.action.type == ButtonActionType.stopRecording ||
+      button.action.type == ButtonActionType.stopVirtualCamera ||
+      button.action.type == ButtonActionType.disableStudioMode) {
     return state.enabled ? colorScheme.error : colorScheme.onSurfaceVariant;
+  }
+
+  if (button.action.type == ButtonActionType.toggleVirtualCamera ||
+      button.action.type == ButtonActionType.toggleStudioMode) {
+    return state.active ? Colors.cyan : colorScheme.onSurfaceVariant;
   }
 
   final fallback = _colorFromHex(button.activeColor) ?? colorScheme.primary;

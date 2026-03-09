@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/constants/app_constants.dart';
+import '../../../../core/utils/macro_plan_access.dart';
 import '../../../../domain/entities/macro_definition.dart';
 import '../../../../domain/entities/obs_action_catalog.dart';
 import '../../../../domain/entities/obs_runtime_state.dart';
@@ -49,13 +51,27 @@ class MacroEditorState {
   }
 }
 
+enum MacroStepAddResult {
+  added,
+  blockedByPremium,
+}
+
+enum MacroSaveResult {
+  success,
+  validationFailed,
+  blockedByPremium,
+  failed,
+}
+
 class MacroEditorController extends StateNotifier<MacroEditorState> {
   MacroEditorController({
     required this.macroId,
+    required Ref ref,
     required MacroRepository macroRepository,
     required ObsRepository obsRepository,
     required RunMacroUseCase runMacro,
   })  : _macroRepository = macroRepository,
+        _ref = ref,
         _obsRepository = obsRepository,
         _runMacro = runMacro,
         super(MacroEditorState.initial()) {
@@ -64,6 +80,7 @@ class MacroEditorController extends StateNotifier<MacroEditorState> {
 
   final String? macroId;
   final MacroRepository _macroRepository;
+  final Ref _ref;
   final ObsRepository _obsRepository;
   final RunMacroUseCase _runMacro;
 
@@ -99,7 +116,10 @@ class MacroEditorController extends StateNotifier<MacroEditorState> {
     state = state.copyWith(macro: state.macro.copyWith(colorHex: colorHex));
   }
 
-  void addStep(MacroActionType type) {
+  MacroStepAddResult addStep(MacroActionType type) {
+    if (!canAddAnotherStep) {
+      return MacroStepAddResult.blockedByPremium;
+    }
     final target = _defaultTargetFor(type);
     final step = MacroAction(
       id: 'step_${DateTime.now().microsecondsSinceEpoch}',
@@ -113,6 +133,7 @@ class MacroEditorController extends StateNotifier<MacroEditorState> {
       macro: state.macro
           .copyWith(steps: <MacroAction>[...state.macro.steps, step]),
     );
+    return MacroStepAddResult.added;
   }
 
   void removeStep(String stepId) {
@@ -165,9 +186,17 @@ class MacroEditorController extends StateNotifier<MacroEditorState> {
     return _runMacro(state.macro.id);
   }
 
-  Future<bool> save() async {
+  Future<MacroSaveResult> save() async {
     final name = state.macro.name.trim();
-    if (name.isEmpty) return false;
+    if (name.isEmpty) return MacroSaveResult.validationFailed;
+    if (isLockedForCurrentPlan) return MacroSaveResult.blockedByPremium;
+    if (!_isPremiumUser &&
+        state.macro.steps.length > freeActionLimit) {
+      return MacroSaveResult.blockedByPremium;
+    }
+    if (isNewMacro && !canCreateMacro) {
+      return MacroSaveResult.blockedByPremium;
+    }
 
     state = state.copyWith(isSaving: true);
 
@@ -191,10 +220,10 @@ class MacroEditorController extends StateNotifier<MacroEditorState> {
       await _macroRepository.saveMacros(macros);
       _macros = macros;
       state = state.copyWith(isSaving: false);
-      return true;
+      return MacroSaveResult.success;
     } catch (_) {
       state = state.copyWith(isSaving: false);
-      return false;
+      return MacroSaveResult.failed;
     }
   }
 
@@ -241,7 +270,7 @@ class MacroEditorController extends StateNotifier<MacroEditorState> {
             )
             .toList(growable: false);
       case ObsActionTargetKind.macro:
-        return _macros
+        return accessibleMacros
             .where((macro) => macro.id != state.macro.id)
             .map(
               (macro) => ActionTargetOption(
@@ -266,6 +295,40 @@ class MacroEditorController extends StateNotifier<MacroEditorState> {
 
   ActionTargetOption? _defaultTargetFor(MacroActionType type) {
     return availableTargets(type).firstOrNull;
+  }
+
+  bool get isNewMacro => macroId == null || state.macro.id == 'macro_new';
+
+  bool get _isPremiumUser => _ref.read(premiumControllerProvider).isPremium;
+
+  int get freeActionLimit => AppConstants.freeMacroActionLimit;
+
+  List<MacroDefinition> get accessibleMacros => MacroPlanAccess.accessibleMacros(
+        isPremium: _isPremiumUser,
+        macros: _macros,
+      );
+
+  bool get canCreateMacro => MacroPlanAccess.canCreateMacro(
+        isPremium: _isPremiumUser,
+        macros: _macros,
+      );
+
+  bool get canAddAnotherStep => !isLockedForCurrentPlan &&
+      MacroPlanAccess.canAddStep(
+        isPremium: _isPremiumUser,
+        macro: state.macro,
+      );
+
+  bool get isLockedForCurrentPlan {
+    if (_isPremiumUser) return false;
+    if (state.macro.steps.length > freeActionLimit) return true;
+    if (isNewMacro) return !canCreateMacro;
+
+    return MacroPlanAccess.isLockedForFreePlan(
+      isPremium: _isPremiumUser,
+      macros: _macros,
+      macro: state.macro,
+    );
   }
 
   void _syncStepTargets() {
@@ -316,6 +379,7 @@ final macroEditorControllerProvider = StateNotifierProvider.autoDispose
     .family<MacroEditorController, MacroEditorState, String?>((ref, macroId) {
   return MacroEditorController(
     macroId: macroId,
+    ref: ref,
     macroRepository: ref.watch(macroRepositoryProvider),
     obsRepository: ref.watch(obsRepositoryProvider),
     runMacro: ref.watch(runMacroUseCaseProvider),

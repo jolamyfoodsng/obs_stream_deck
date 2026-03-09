@@ -65,6 +65,11 @@ class ObsRepositoryImpl implements ObsRepository {
       service.executeAction(action);
 
   @override
+  void setAppInForeground(bool isForeground) {
+    service.setAppInForeground(isForeground);
+  }
+
+  @override
   Future<void> runMacro(String macroId) async {
     final macros = await macroRepository.loadMacros();
     final macrosById = <String, MacroDefinition>{

@@ -1,10 +1,12 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
 import '../../../../core/utils/obs_qr_payload_parser.dart';
+import '../../../../domain/entities/connection_method.dart';
 import '../../../../domain/entities/discovered_obs_device.dart';
 import '../../../../domain/entities/saved_obs_connection.dart';
 import '../../../../shared/state/app_providers.dart';
@@ -55,6 +57,9 @@ class _ConnectionScreenState extends ConsumerState<ConnectionScreen> {
     final state = ref.watch(connectionControllerProvider);
     final controller = ref.read(connectionControllerProvider.notifier);
     final volunteerMode = ref.watch(volunteerModeProvider);
+    final isUsbMode = state.connectionMethod == ConnectionMethod.usb;
+    final adbReverseCommand =
+        'adb reverse tcp:${int.tryParse(state.port.trim()) ?? 4455} tcp:${int.tryParse(state.port.trim()) ?? 4455}';
 
     _syncControllerText(_hostController, state.host);
     _syncControllerText(_portController, state.port);
@@ -83,16 +88,107 @@ class _ConnectionScreenState extends ConsumerState<ConnectionScreen> {
                   const AppSectionHeader(
                     title: 'Connect to OBS',
                     subtitle:
-                        'Most users can connect without entering an IP manually.',
+                        'Connect this device to the computer running OBS. Both devices must be on the same Wi-Fi or hotspot network.',
+                  ),
+                  const SizedBox(height: 12),
+                  _ConnectionMethodSelector(
+                    selected: state.connectionMethod,
+                    onSelected: controller.updateConnectionMethod,
                   ),
                   const SizedBox(height: 12),
                   ObsConnectionCard(
                     status: state.status,
                     message: state.statusMessage,
                   ),
+                  if (isUsbMode) ...<Widget>[
+                    const SizedBox(height: 12),
+                    Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            Text(
+                              'USB Mode (No Wi-Fi)',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .titleMedium
+                                  ?.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              'Use USB Mode if Wi-Fi is unavailable.',
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurfaceVariant,
+                                  ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Connect phone and OBS computer with USB, then use ADB reverse or USB tethering.',
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              '1) Enable USB debugging on Android.\n2) Run on computer:\n$adbReverseCommand\n3) Keep Host as 127.0.0.1 and tap Connect.',
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                            const SizedBox(height: 10),
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: <Widget>[
+                                FilledButton.tonalIcon(
+                                  onPressed: state.isBusy
+                                      ? null
+                                      : controller.applyUsbDefaults,
+                                  icon: const Icon(Icons.usb),
+                                  label: const Text('Use USB Defaults'),
+                                ),
+                                OutlinedButton.icon(
+                                  onPressed: () async {
+                                    await Clipboard.setData(
+                                      ClipboardData(text: adbReverseCommand),
+                                    );
+                                    if (!context.mounted) return;
+                                    ScaffoldMessenger.of(context)
+                                      ..hideCurrentSnackBar()
+                                      ..showSnackBar(
+                                        const SnackBar(
+                                          content: Text('ADB command copied.'),
+                                          duration:
+                                              Duration(milliseconds: 1200),
+                                        ),
+                                      );
+                                  },
+                                  icon: const Icon(Icons.copy),
+                                  label: const Text('Copy ADB Command'),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              'Alternative: enable USB tethering and enter your computer USB LAN IP in Host.',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodySmall
+                                  ?.copyWith(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurfaceVariant,
+                                  ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 14),
                   FilledButton.icon(
-                    onPressed: state.isBusy || state.isDetecting
+                    onPressed: state.isBusy || state.isDetecting || isUsbMode
                         ? null
                         : controller.autoDetect,
                     icon: state.isDetecting
@@ -157,7 +253,11 @@ class _ConnectionScreenState extends ConsumerState<ConnectionScreen> {
                       },
                       leading: const Icon(Icons.tune),
                       title: const Text('Manual Setup'),
-                      subtitle: const Text('Host, port, and password'),
+                      subtitle: Text(
+                        isUsbMode
+                            ? 'USB host/port/password'
+                            : 'Host, port, and password',
+                      ),
                       childrenPadding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
                       children: <Widget>[
                         TextField(
@@ -400,6 +500,78 @@ class _ConnectionScreenState extends ConsumerState<ConnectionScreen> {
             backgroundColor: Theme.of(context).colorScheme.error,
           ),
         );
+    }
+  }
+}
+
+class _ConnectionMethodSelector extends StatelessWidget {
+  const _ConnectionMethodSelector({
+    required this.selected,
+    required this.onSelected,
+  });
+
+  final ConnectionMethod selected;
+  final ValueChanged<ConnectionMethod> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final selectedColor = Theme.of(context).colorScheme.primary;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text(
+              'Connection Method',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: ConnectionMethod.values.map((method) {
+                final active = method == selected;
+                return ChoiceChip(
+                  selected: active,
+                  onSelected: (_) => onSelected(method),
+                  avatar: Icon(
+                    _iconForMethod(method),
+                    size: 18,
+                    color: active
+                        ? selectedColor
+                        : Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                  label: Text(method.label),
+                );
+              }).toList(growable: false),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              selected.helper,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  IconData _iconForMethod(ConnectionMethod method) {
+    switch (method) {
+      case ConnectionMethod.autoDetect:
+        return Icons.search;
+      case ConnectionMethod.wifi:
+        return Icons.wifi;
+      case ConnectionMethod.usb:
+        return Icons.usb;
+      case ConnectionMethod.manual:
+        return Icons.tune;
     }
   }
 }

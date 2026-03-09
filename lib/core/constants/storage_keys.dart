@@ -17,4 +17,6 @@ class StorageKeys {
   static const String scenePreviewMode = 'scene_preview_mode';
   static const String sceneThumbnailCache = 'scene_thumbnail_cache';
   static const String layoutPresets = 'layout_presets';
+  static const String premiumUnlocked = 'premium_unlocked';
+  static const String premiumUnlockedAt = 'premium_unlocked_at';
 }

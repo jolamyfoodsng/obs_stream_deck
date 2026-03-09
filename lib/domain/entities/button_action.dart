@@ -15,6 +15,12 @@ enum ButtonActionType {
   pauseRecording,
   resumeRecording,
   toggleRecording,
+  startVirtualCamera,
+  stopVirtualCamera,
+  toggleVirtualCamera,
+  enableStudioMode,
+  disableStudioMode,
+  toggleStudioMode,
   runMacro,
 }
 

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
@@ -16,10 +17,16 @@ import '../../domain/entities/recording_status.dart';
 import '../../domain/entities/scene_item.dart';
 import '../../domain/entities/source_item.dart';
 import '../../domain/entities/stream_status.dart';
+import 'obs_stats_service.dart';
 import 'obs_websocket_service.dart';
 
 class RealObsWebSocketService implements ObsWebSocketService {
-  RealObsWebSocketService();
+  RealObsWebSocketService() {
+    _statsService = ObsStatsService(
+      request: _requestStatsPayload,
+      onSnapshot: _applyStatsSnapshot,
+    );
+  }
 
   static const int _eventSubscriptions = 1 | // General
       4 | // Scenes
@@ -28,6 +35,9 @@ class RealObsWebSocketService implements ObsWebSocketService {
       128 | // Scene items
       1024 | // UI
       65536; // Input volume meters
+  static const double _meterFloorDb = -60;
+  static const double _microphoneSilenceThresholdDb = -55;
+  static const Duration _microphoneSilenceWindow = Duration(seconds: 5);
 
   final _connectionController = StreamController<ConnectionStatus>.broadcast();
   final _streamController = StreamController<StreamStatus>.broadcast();
@@ -52,9 +62,10 @@ class RealObsWebSocketService implements ObsWebSocketService {
   bool _identified = false;
   bool _manualDisconnect = false;
   bool _disposed = false;
-  bool _statsRefreshInFlight = false;
-  DateTime? _lastStatsRefreshAt;
+  bool _audioMetersAvailable = false;
   int _requestCounter = 0;
+  late final ObsStatsService _statsService;
+  final Map<String, DateTime> _lastAudibleAtByInput = <String, DateTime>{};
 
   @override
   Stream<ConnectionStatus> get connectionStatusStream =>
@@ -93,9 +104,13 @@ class RealObsWebSocketService implements ObsWebSocketService {
     _lastConfig = config;
 
     await _tearDownConnection(emitDisconnected: false);
+    _resetAudioMonitoring();
 
     _emitState(_state.copyWith(
       connectionStatus: ConnectionStatus.connecting,
+      audioMetersAvailable: false,
+      microphoneSilent: false,
+      silentMicrophoneName: null,
       clearLastError: true,
     ));
 
@@ -115,6 +130,7 @@ class RealObsWebSocketService implements ObsWebSocketService {
 
       await _identifyCompleter!.future.timeout(const Duration(seconds: 12));
 
+      _statsService.setConnected(true);
       await refreshState();
 
       _emitState(_state.copyWith(
@@ -137,6 +153,7 @@ class RealObsWebSocketService implements ObsWebSocketService {
     _manualDisconnect = true;
     _reconnectTimer?.cancel();
     _reconnectTimer = null;
+    _statsService.setConnected(false);
     await _tearDownConnection(emitDisconnected: true);
   }
 
@@ -185,9 +202,9 @@ class RealObsWebSocketService implements ObsWebSocketService {
 
     await _refreshScenesAndSources();
     await _refreshInputs();
-    await _refreshOutputStatus();
+    await _refreshVirtualCameraStatus();
     await _refreshStudioMode();
-    await _refreshStats();
+    await _statsService.refreshNow();
   }
 
   @override
@@ -230,6 +247,11 @@ class RealObsWebSocketService implements ObsWebSocketService {
   }
 
   @override
+  void setAppInForeground(bool isForeground) {
+    _statsService.setAppInForeground(isForeground);
+  }
+
+  @override
   Future<void> executeAction(ButtonAction action) async {
     if (!_identified) {
       throw const AppException(
@@ -238,118 +260,202 @@ class RealObsWebSocketService implements ObsWebSocketService {
       );
     }
 
-    switch (action.type) {
-      case ButtonActionType.switchScene:
-        final target = action.targetId ?? action.targetName;
-        if (target == null || target.isEmpty) return;
-        final sceneName = _resolveSceneNameTarget(target);
-        if (sceneName == null) return;
-        await sendRequest(
-          'SetCurrentProgramScene',
-          requestData: <String, dynamic>{'sceneName': sceneName},
-        );
-        break;
-      case ButtonActionType.setPreviewScene:
-        if (!_state.studioModeEnabled) return;
-        final target = action.targetId ?? action.targetName;
-        if (target == null || target.isEmpty) return;
-        final sceneName = _resolveSceneNameTarget(target);
-        if (sceneName == null) return;
-        await sendRequest(
-          'SetCurrentPreviewScene',
-          requestData: <String, dynamic>{'sceneName': sceneName},
-        );
-        break;
-      case ButtonActionType.showSource:
-        await _applySourceVisibilityAction(
-          action.targetId ?? action.targetName,
-          _VisibilityMode.show,
-        );
-        break;
-      case ButtonActionType.hideSource:
-        await _applySourceVisibilityAction(
-          action.targetId ?? action.targetName,
-          _VisibilityMode.hide,
-        );
-        break;
-      case ButtonActionType.toggleSourceVisibility:
-        await _applySourceVisibilityAction(
-          action.targetId ?? action.targetName,
-          _VisibilityMode.toggle,
-        );
-        break;
-      case ButtonActionType.mute:
-        await _applyMuteAction(
-          action.targetId ?? action.targetName,
-          _MuteMode.mute,
-          action.metadata,
-        );
-        break;
-      case ButtonActionType.unmute:
-        await _applyMuteAction(
-          action.targetId ?? action.targetName,
-          _MuteMode.unmute,
-          action.metadata,
-        );
-        break;
-      case ButtonActionType.toggleMute:
-        await _applyMuteAction(
-          action.targetId ?? action.targetName,
-          _MuteMode.toggle,
-          action.metadata,
-        );
-        break;
-      case ButtonActionType.startStream:
-        _emitState(_state.copyWith(streamStatus: StreamStatus.starting));
-        await sendRequest('StartStream');
-        break;
-      case ButtonActionType.stopStream:
-        _emitState(_state.copyWith(streamStatus: StreamStatus.stopping));
-        await sendRequest('StopStream');
-        break;
-      case ButtonActionType.toggleStream:
-        final isLive = _state.streamStatus == StreamStatus.live ||
-            _state.streamStatus == StreamStatus.starting;
-        _emitState(
-          _state.copyWith(
-            streamStatus:
-                isLive ? StreamStatus.stopping : StreamStatus.starting,
-          ),
-        );
-        await sendRequest('ToggleStream');
-        break;
-      case ButtonActionType.startRecording:
-        _emitState(_state.copyWith(recordingStatus: RecordingStatus.starting));
-        await sendRequest('StartRecord');
-        break;
-      case ButtonActionType.stopRecording:
-        _emitState(_state.copyWith(recordingStatus: RecordingStatus.stopping));
-        await sendRequest('StopRecord');
-        break;
-      case ButtonActionType.pauseRecording:
-        _emitState(_state.copyWith(recordingStatus: RecordingStatus.paused));
-        await sendRequest('PauseRecord');
-        break;
-      case ButtonActionType.resumeRecording:
-        _emitState(_state.copyWith(recordingStatus: RecordingStatus.recording));
-        await sendRequest('ResumeRecord');
-        break;
-      case ButtonActionType.toggleRecording:
-        final isRecordingActive =
-            _state.recordingStatus == RecordingStatus.recording ||
-                _state.recordingStatus == RecordingStatus.paused ||
-                _state.recordingStatus == RecordingStatus.starting;
-        _emitState(
-          _state.copyWith(
-            recordingStatus: isRecordingActive
-                ? RecordingStatus.stopping
-                : RecordingStatus.starting,
-          ),
-        );
-        await sendRequest('ToggleRecord');
-        break;
-      case ButtonActionType.runMacro:
-        break;
+    final mutatesOutputState = switch (action.type) {
+      ButtonActionType.startStream ||
+      ButtonActionType.stopStream ||
+      ButtonActionType.toggleStream ||
+      ButtonActionType.startRecording ||
+      ButtonActionType.stopRecording ||
+      ButtonActionType.pauseRecording ||
+      ButtonActionType.resumeRecording ||
+      ButtonActionType.toggleRecording =>
+        true,
+      _ => false,
+    };
+    final mutatesVirtualCameraState = switch (action.type) {
+      ButtonActionType.startVirtualCamera ||
+      ButtonActionType.stopVirtualCamera ||
+      ButtonActionType.toggleVirtualCamera =>
+        true,
+      _ => false,
+    };
+    final mutatesStudioModeState = switch (action.type) {
+      ButtonActionType.enableStudioMode ||
+      ButtonActionType.disableStudioMode ||
+      ButtonActionType.toggleStudioMode =>
+        true,
+      _ => false,
+    };
+
+    try {
+      switch (action.type) {
+        case ButtonActionType.switchScene:
+          final target = action.targetId ?? action.targetName;
+          if (target == null || target.isEmpty) return;
+          final sceneName = _resolveSceneNameTarget(target);
+          if (sceneName == null) return;
+          await sendRequest(
+            'SetCurrentProgramScene',
+            requestData: <String, dynamic>{'sceneName': sceneName},
+          );
+          break;
+        case ButtonActionType.setPreviewScene:
+          if (!_state.studioModeEnabled) return;
+          final target = action.targetId ?? action.targetName;
+          if (target == null || target.isEmpty) return;
+          final sceneName = _resolveSceneNameTarget(target);
+          if (sceneName == null) return;
+          await sendRequest(
+            'SetCurrentPreviewScene',
+            requestData: <String, dynamic>{'sceneName': sceneName},
+          );
+          break;
+        case ButtonActionType.showSource:
+          await _applySourceVisibilityAction(
+            action.targetId ?? action.targetName,
+            _VisibilityMode.show,
+          );
+          break;
+        case ButtonActionType.hideSource:
+          await _applySourceVisibilityAction(
+            action.targetId ?? action.targetName,
+            _VisibilityMode.hide,
+          );
+          break;
+        case ButtonActionType.toggleSourceVisibility:
+          await _applySourceVisibilityAction(
+            action.targetId ?? action.targetName,
+            _VisibilityMode.toggle,
+          );
+          break;
+        case ButtonActionType.mute:
+          await _applyMuteAction(
+            action.targetId ?? action.targetName,
+            _MuteMode.mute,
+            action.metadata,
+          );
+          break;
+        case ButtonActionType.unmute:
+          await _applyMuteAction(
+            action.targetId ?? action.targetName,
+            _MuteMode.unmute,
+            action.metadata,
+          );
+          break;
+        case ButtonActionType.toggleMute:
+          await _applyMuteAction(
+            action.targetId ?? action.targetName,
+            _MuteMode.toggle,
+            action.metadata,
+          );
+          break;
+        case ButtonActionType.startStream:
+          _emitState(_state.copyWith(streamStatus: StreamStatus.starting));
+          await sendRequest('StartStream');
+          break;
+        case ButtonActionType.stopStream:
+          _emitState(_state.copyWith(streamStatus: StreamStatus.stopping));
+          await sendRequest('StopStream');
+          break;
+        case ButtonActionType.toggleStream:
+          final isLive = _state.streamStatus == StreamStatus.live ||
+              _state.streamStatus == StreamStatus.starting;
+          _emitState(
+            _state.copyWith(
+              streamStatus:
+                  isLive ? StreamStatus.stopping : StreamStatus.starting,
+            ),
+          );
+          await sendRequest('ToggleStream');
+          break;
+        case ButtonActionType.startRecording:
+          _emitState(
+              _state.copyWith(recordingStatus: RecordingStatus.starting));
+          await sendRequest('StartRecord');
+          break;
+        case ButtonActionType.stopRecording:
+          _emitState(
+              _state.copyWith(recordingStatus: RecordingStatus.stopping));
+          await sendRequest('StopRecord');
+          break;
+        case ButtonActionType.pauseRecording:
+          _emitState(_state.copyWith(recordingStatus: RecordingStatus.paused));
+          await sendRequest('PauseRecord');
+          break;
+        case ButtonActionType.resumeRecording:
+          _emitState(
+              _state.copyWith(recordingStatus: RecordingStatus.recording));
+          await sendRequest('ResumeRecord');
+          break;
+        case ButtonActionType.toggleRecording:
+          final isRecordingActive =
+              _state.recordingStatus == RecordingStatus.recording ||
+                  _state.recordingStatus == RecordingStatus.paused ||
+                  _state.recordingStatus == RecordingStatus.starting;
+          _emitState(
+            _state.copyWith(
+              recordingStatus: isRecordingActive
+                  ? RecordingStatus.stopping
+                  : RecordingStatus.starting,
+            ),
+          );
+          await sendRequest('ToggleRecord');
+          break;
+        case ButtonActionType.startVirtualCamera:
+          _emitState(_state.copyWith(virtualCameraActive: true));
+          await sendRequest('StartVirtualCam');
+          break;
+        case ButtonActionType.stopVirtualCamera:
+          _emitState(_state.copyWith(virtualCameraActive: false));
+          await sendRequest('StopVirtualCam');
+          break;
+        case ButtonActionType.toggleVirtualCamera:
+          _emitState(
+            _state.copyWith(virtualCameraActive: !_state.virtualCameraActive),
+          );
+          await sendRequest('ToggleVirtualCam');
+          break;
+        case ButtonActionType.enableStudioMode:
+          _emitState(_state.copyWith(studioModeEnabled: true));
+          await sendRequest(
+            'SetStudioModeEnabled',
+            requestData: const <String, dynamic>{'studioModeEnabled': true},
+          );
+          break;
+        case ButtonActionType.disableStudioMode:
+          _emitState(_state.copyWith(studioModeEnabled: false));
+          await sendRequest(
+            'SetStudioModeEnabled',
+            requestData: const <String, dynamic>{'studioModeEnabled': false},
+          );
+          break;
+        case ButtonActionType.toggleStudioMode:
+          final nextStudioMode = !_state.studioModeEnabled;
+          _emitState(
+            _state.copyWith(studioModeEnabled: nextStudioMode),
+          );
+          await sendRequest(
+            'SetStudioModeEnabled',
+            requestData: <String, dynamic>{
+              'studioModeEnabled': nextStudioMode,
+            },
+          );
+          break;
+        case ButtonActionType.runMacro:
+          break;
+      }
+    } finally {
+      if (mutatesOutputState) {
+        // Correct optimistic states quickly if OBS rejects a request or if
+        // an output event arrives late.
+        unawaited(_statsService.refreshNow());
+      }
+      if (mutatesVirtualCameraState) {
+        unawaited(_refreshVirtualCameraStatus());
+      }
+      if (mutatesStudioModeState) {
+        unawaited(_refreshStudioMode());
+      }
     }
   }
 
@@ -716,26 +822,13 @@ class RealObsWebSocketService implements ObsWebSocketService {
           final muteData = _responseData(muteResponse);
           final muted = muteData['inputMuted'] as bool? ?? false;
 
-          var volume = 1.0;
-          try {
-            final volumeResponse = await sendRequest(
-              'GetInputVolume',
-              requestData: <String, dynamic>{'inputName': name},
-            );
-            final volumeData = _responseData(volumeResponse);
-            volume =
-                ((volumeData['inputVolumeMul'] as num?)?.toDouble() ?? volume)
-                    .clamp(0.0, 1.0);
-          } catch (_) {
-            // Ignore unsupported volume requests.
-          }
-
           audioSources.add(
             AudioSource(
               id: name,
               name: name,
               isMuted: muted,
-              volume: volume,
+              volume: 0,
+              levelDb: _meterFloorDb,
             ),
           );
         } catch (_) {
@@ -743,7 +836,7 @@ class RealObsWebSocketService implements ObsWebSocketService {
         }
       }
 
-      _emitState(_state.copyWith(audioSources: audioSources));
+      _emitAudioSources(audioSources);
       return audioSources;
     } catch (error) {
       _emitState(_state.copyWith(lastError: _errorMessage(error)));
@@ -751,63 +844,34 @@ class RealObsWebSocketService implements ObsWebSocketService {
     }
   }
 
-  Future<void> _refreshOutputStatus() async {
-    try {
-      final streamResponse = await sendRequest('GetStreamStatus');
-      final streamData = _responseData(streamResponse);
+  Future<Map<String, dynamic>> _requestStatsPayload(String requestType) async {
+    final response = await sendRequest(requestType);
+    return _responseData(response);
+  }
 
-      final streamActive = streamData['outputActive'] as bool? ?? false;
-      final streamState = streamData['outputState'] as String?;
-      final outputReconnecting =
-          streamData['outputReconnecting'] as bool? ?? false;
-      final outputCongestion =
-          (streamData['outputCongestion'] as num?)?.toDouble() ?? 0;
-      final outputSkippedFrames =
-          (streamData['outputSkippedFrames'] as num?)?.toInt() ?? 0;
-      final outputTotalFrames =
-          (streamData['outputTotalFrames'] as num?)?.toInt() ?? 0;
-      final outputDurationMs =
-          (streamData['outputDuration'] as num?)?.toInt() ?? 0;
-      final outputBytes = (streamData['outputBytes'] as num?)?.toInt() ?? 0;
-
-      final bitrateKbps = outputDurationMs > 0
-          ? ((outputBytes * 8) / outputDurationMs).round()
-          : _state.bitrateKbps;
-      final droppedFramesPercent = outputTotalFrames <= 0
-          ? 0.0
-          : ((outputSkippedFrames / outputTotalFrames) * 100).toDouble();
-
-      final recordResponse = await sendRequest('GetRecordStatus');
-      final recordData = _responseData(recordResponse);
-      final recordActive = recordData['outputActive'] as bool? ?? false;
-      final recordState = recordData['outputState'] as String?;
-
-      _emitState(
-        _state.copyWith(
-          streamStatus: _mapOutputState(
-            active: streamActive,
-            outputState: streamState,
-            isStream: true,
-          ),
-          recordingStatus: _mapOutputState(
-            active: recordActive,
-            outputState: recordState,
-            isStream: false,
-          ) as RecordingStatus,
-          uptime: streamActive
-              ? Duration(milliseconds: outputDurationMs)
-              : Duration.zero,
-          bitrateKbps: streamActive ? bitrateKbps : 0,
-          droppedFramesPercent: streamActive ? droppedFramesPercent : 0,
-          outputReconnecting: outputReconnecting,
-          outputCongestion: outputCongestion,
-          outputSkippedFrames: outputSkippedFrames,
-          outputTotalFrames: outputTotalFrames,
-        ),
-      );
-    } catch (error) {
-      _emitState(_state.copyWith(lastError: _errorMessage(error)));
-    }
+  void _applyStatsSnapshot(ObsStatsSnapshot snapshot) {
+    _emitState(
+      _state.copyWith(
+        streamStatus: snapshot.streamStatus,
+        recordingStatus: snapshot.recordingStatus,
+        bitrateKbps: snapshot.bitrateKbps,
+        droppedFramesPercent: snapshot.droppedFramesPercent,
+        cpuUsagePercent: snapshot.cpuUsagePercent,
+        activeFps: snapshot.activeFps,
+        averageFrameRenderTimeMs: snapshot.averageFrameRenderTimeMs,
+        renderSkippedFrames: snapshot.renderSkippedFrames,
+        renderTotalFrames: snapshot.renderTotalFrames,
+        uptime: snapshot.streamDuration,
+        streamTimecode: snapshot.streamTimecode,
+        streamOutputBytes: snapshot.streamOutputBytes,
+        outputReconnecting: snapshot.outputReconnecting,
+        outputCongestion: snapshot.outputCongestion,
+        outputSkippedFrames: snapshot.outputSkippedFrames,
+        outputTotalFrames: snapshot.outputTotalFrames,
+        recordingDuration: snapshot.recordingDuration,
+        recordingTimecode: snapshot.recordingTimecode,
+      ),
+    );
   }
 
   Future<void> _refreshStudioMode() async {
@@ -824,29 +888,47 @@ class RealObsWebSocketService implements ObsWebSocketService {
     }
   }
 
-  Future<void> _refreshStats() async {
+  Future<void> _refreshVirtualCameraStatus() async {
     try {
-      final response = await sendRequest('GetStats');
+      final response = await sendRequest('GetVirtualCamStatus');
       final data = _responseData(response);
-
-      final cpuUsage =
-          (data['cpuUsage'] as num?)?.toDouble() ?? _state.cpuUsagePercent;
-      final skipped = (data['outputSkippedFrames'] as num?)?.toDouble() ?? 0;
-      final total = (data['outputTotalFrames'] as num?)?.toDouble() ?? 0;
-      final droppedPercent =
-          total <= 0 ? 0.0 : ((skipped / total) * 100).toDouble();
-
-      _emitState(
-        _state.copyWith(
-          cpuUsagePercent: cpuUsage,
-          droppedFramesPercent: droppedPercent,
-          outputSkippedFrames: skipped.toInt(),
-          outputTotalFrames: total.toInt(),
-        ),
-      );
+      final active = _resolveVirtualCameraActive(data);
+      _emitState(_state.copyWith(virtualCameraActive: active));
     } catch (_) {
-      // Stats are optional. Keep existing values.
+      // Virtual camera controls can be unavailable depending on OBS build.
+      // Keep previous state if request is unsupported.
     }
+  }
+
+  bool _resolveVirtualCameraActive(Map<String, dynamic> data) {
+    final outputActive = data['outputActive'];
+    if (outputActive is bool) return outputActive;
+
+    final outputState = (data['outputState'] as String?)?.toUpperCase() ?? '';
+    if (outputState.contains('START') ||
+        outputState.contains('ACTIVE') ||
+        outputState.contains('RUNNING')) {
+      return true;
+    }
+    if (outputState.contains('STOP') ||
+        outputState.contains('INACTIVE') ||
+        outputState == 'OFF') {
+      return false;
+    }
+
+    final state = (data['state'] as String?)?.toUpperCase() ?? '';
+    if (state.contains('START') ||
+        state.contains('ACTIVE') ||
+        state.contains('RUNNING')) {
+      return true;
+    }
+    if (state.contains('STOP') ||
+        state.contains('INACTIVE') ||
+        state == 'OFF') {
+      return false;
+    }
+
+    return _state.virtualCameraActive;
   }
 
   void _handleIncoming(dynamic event) {
@@ -991,10 +1073,9 @@ class RealObsWebSocketService implements ObsWebSocketService {
         final outputDurationMs =
             (eventData['outputDuration'] as num?)?.toInt() ??
                 (active ? _state.uptime.inMilliseconds : 0);
-        final outputBytes = (eventData['outputBytes'] as num?)?.toInt();
-        final bitrateKbps = (outputBytes != null && outputDurationMs > 0)
-            ? ((outputBytes * 8) / outputDurationMs).round()
-            : (active ? _state.bitrateKbps : 0);
+        final outputBytes = (eventData['outputBytes'] as num?)?.toInt() ??
+            _state.streamOutputBytes;
+        final outputTimecode = eventData['outputTimecode'] as String?;
         final droppedFramesPercent = outputTotalFrames <= 0
             ? 0.0
             : ((outputSkippedFrames / outputTotalFrames) * 100).toDouble();
@@ -1008,7 +1089,8 @@ class RealObsWebSocketService implements ObsWebSocketService {
             uptime: active
                 ? Duration(milliseconds: outputDurationMs)
                 : Duration.zero,
-            bitrateKbps: active ? bitrateKbps : 0,
+            streamTimecode: active ? outputTimecode : null,
+            streamOutputBytes: active ? outputBytes : 0,
             droppedFramesPercent: active ? droppedFramesPercent : 0,
             outputReconnecting: outputReconnecting,
             outputCongestion: outputCongestion,
@@ -1016,13 +1098,14 @@ class RealObsWebSocketService implements ObsWebSocketService {
             outputTotalFrames: outputTotalFrames,
           ),
         );
-        // OBS can omit some stream stats in event payloads; one-shot refresh
-        // keeps state trustworthy without relying on periodic polling.
-        unawaited(_refreshOutputStatus());
-        unawaited(_refreshStatsFromEvent());
+        unawaited(_statsService.refreshNow());
       case 'RecordStateChanged':
         final active = eventData['outputActive'] as bool? ?? false;
         final outputState = eventData['outputState'] as String?;
+        final outputDurationMs =
+            (eventData['outputDuration'] as num?)?.toInt() ??
+                (active ? _state.recordingDuration.inMilliseconds : 0);
+        final outputTimecode = eventData['outputTimecode'] as String?;
         _emitState(
           _state.copyWith(
             recordingStatus: _mapOutputState(
@@ -1030,8 +1113,13 @@ class RealObsWebSocketService implements ObsWebSocketService {
               outputState: outputState,
               isStream: false,
             ) as RecordingStatus,
+            recordingDuration: active
+                ? Duration(milliseconds: outputDurationMs)
+                : Duration.zero,
+            recordingTimecode: active ? outputTimecode : null,
           ),
         );
+        unawaited(_statsService.refreshNow());
       case 'InputMuteStateChanged':
         final inputName = eventData['inputName'] as String?;
         final inputMuted = eventData['inputMuted'] as bool?;
@@ -1044,7 +1132,7 @@ class RealObsWebSocketService implements ObsWebSocketService {
             }
             return source;
           }).toList();
-          _emitState(_state.copyWith(audioSources: updated));
+          _emitAudioSources(updated);
           if (!found) {
             unawaited(_refreshInputs());
           }
@@ -1072,11 +1160,21 @@ class RealObsWebSocketService implements ObsWebSocketService {
       case 'InputVolumeMeters':
         _handleInputVolumeMeters(eventData);
       case 'StudioModeStateChanged':
+      case 'StudioModeSwitched':
         _emitState(
           _state.copyWith(
             studioModeEnabled: eventData['studioModeEnabled'] as bool? ?? false,
           ),
         );
+      case 'VirtualcamStateChanged':
+      case 'VirtualCamStateChanged':
+        _emitState(
+          _state.copyWith(
+            virtualCameraActive: _resolveVirtualCameraActive(eventData),
+          ),
+        );
+        // Some OBS builds send partial payloads here; sync authoritative value.
+        unawaited(_refreshVirtualCameraStatus());
       case 'SceneCreated':
       case 'SceneRemoved':
       case 'SceneNameChanged':
@@ -1100,62 +1198,166 @@ class RealObsWebSocketService implements ObsWebSocketService {
     final inputs = (data['inputs'] as List?) ?? <dynamic>[];
     if (inputs.isEmpty) return;
 
-    final volumeByName = <String, double>{};
+    final meterByName = <String, ({double level, double db})>{};
 
     for (final item in inputs.whereType<Map>()) {
       final inputName = item['inputName'] as String?;
       if (inputName == null || inputName.isEmpty) continue;
 
-      final levels = (item['inputLevelsMul'] as List?) ?? <dynamic>[];
-      var sum = 0.0;
-      var count = 0;
-      for (final channel in levels.whereType<List>()) {
-        for (final sample in channel) {
-          if (sample is num) {
-            sum += sample.toDouble();
-            count += 1;
-          }
-        }
-      }
-      if (count == 0) continue;
+      final meterDb = _extractPeakValue(item['inputLevelsDb']);
+      final meterMul = _extractPeakValue(item['inputLevelsMul']);
+      final resolvedDb = meterDb ?? _mulToDb(meterMul);
+      final resolvedLevel = meterMul ?? _dbToLevel(meterDb);
 
-      final avg = (sum / count).clamp(0.0, 1.0);
-      volumeByName[inputName] = avg;
+      if (resolvedDb == null || resolvedLevel == null) continue;
+
+      meterByName[inputName] = (
+        level: resolvedLevel.clamp(0.0, 1.0),
+        db: resolvedDb.clamp(_meterFloorDb, 0.0),
+      );
     }
 
-    if (volumeByName.isEmpty) return;
+    if (meterByName.isEmpty) return;
+    _audioMetersAvailable = true;
 
     final updated = _state.audioSources.map((source) {
-      final level = volumeByName[source.id];
-      if (level == null) return source;
-      return source.copyWith(volume: level);
+      final meter = meterByName[source.id];
+      if (meter == null) return source;
+      return source.copyWith(
+        volume: meter.level,
+        levelDb: meter.db,
+        hasLiveMeter: true,
+      );
     }).toList();
 
-    _emitState(_state.copyWith(audioSources: updated));
-    unawaited(_refreshStatsFromEvent());
+    _emitAudioSources(updated);
   }
 
-  Future<void> _refreshStatsFromEvent() async {
-    if (!_identified) return;
-    if (_state.streamStatus != StreamStatus.live &&
-        _state.streamStatus != StreamStatus.starting) {
-      return;
-    }
-    if (_statsRefreshInFlight) return;
+  void _emitAudioSources(List<AudioSource> audioSources) {
+    final silentMicrophoneName = _resolveSilentMicrophone(audioSources);
+    _emitState(
+      _state.copyWith(
+        audioSources: audioSources,
+        audioMetersAvailable: _audioMetersAvailable,
+        microphoneSilent: silentMicrophoneName != null,
+        silentMicrophoneName: silentMicrophoneName,
+      ),
+    );
+  }
+
+  String? _resolveSilentMicrophone(List<AudioSource> audioSources) {
+    if (!_audioMetersAvailable) return null;
 
     final now = DateTime.now();
-    final last = _lastStatsRefreshAt;
-    if (last != null && now.difference(last) < const Duration(seconds: 2)) {
-      return;
+    final activeIds = audioSources.map((source) => source.id).toSet();
+    _lastAudibleAtByInput.removeWhere(
+      (inputId, _) => !activeIds.contains(inputId),
+    );
+
+    final candidates = _microphoneCandidates(audioSources);
+    for (final source in candidates) {
+      _lastAudibleAtByInput.putIfAbsent(source.id, () => now);
+
+      if (source.isMuted || !source.hasLiveMeter) {
+        _lastAudibleAtByInput[source.id] = now;
+        continue;
+      }
+
+      if (source.levelDb > _microphoneSilenceThresholdDb) {
+        _lastAudibleAtByInput[source.id] = now;
+        continue;
+      }
+
+      final lastAudibleAt = _lastAudibleAtByInput[source.id]!;
+      if (now.difference(lastAudibleAt) >= _microphoneSilenceWindow) {
+        return source.name;
+      }
     }
 
-    _statsRefreshInFlight = true;
-    try {
-      await _refreshStats();
-    } finally {
-      _lastStatsRefreshAt = DateTime.now();
-      _statsRefreshInFlight = false;
+    return null;
+  }
+
+  List<AudioSource> _microphoneCandidates(List<AudioSource> audioSources) {
+    final microphones = audioSources
+        .where((source) => _looksLikeMicrophone(source.name))
+        .toList();
+    if (microphones.isNotEmpty) return microphones;
+
+    final fallback = audioSources
+        .where((source) => !_looksLikeDesktopAudio(source.name))
+        .take(1)
+        .toList();
+    return fallback;
+  }
+
+  bool _looksLikeMicrophone(String name) {
+    final normalized = _normalizeTargetToken(name);
+    if (normalized.isEmpty) return false;
+    if (_looksLikeDesktopAudio(name)) return false;
+
+    const keywords = <String>[
+      'mic',
+      'microphone',
+      'aux',
+      'voice',
+      'xlr',
+      'headset',
+      'lav',
+      'boom',
+      'wireless',
+    ];
+    return keywords.any(normalized.contains);
+  }
+
+  bool _looksLikeDesktopAudio(String name) {
+    final normalized = _normalizeTargetToken(name);
+    if (normalized.isEmpty) return false;
+
+    const keywords = <String>[
+      'desktop',
+      'system',
+      'speaker',
+      'output',
+      'game',
+      'music',
+      'media',
+      'monitor',
+    ];
+    return keywords.any(normalized.contains);
+  }
+
+  double? _extractPeakValue(dynamic rawLevels) {
+    if (rawLevels is! List) return null;
+
+    double? peak;
+    for (final channel in rawLevels.whereType<List>()) {
+      for (final sample in channel.whereType<num>()) {
+        final value = sample.toDouble();
+        if (!value.isFinite) continue;
+        peak = peak == null ? value : math.max(peak, value);
+      }
     }
+    return peak;
+  }
+
+  double? _mulToDb(double? level) {
+    if (level == null) return null;
+    if (level <= 0) return _meterFloorDb;
+    final db = 20 * (math.log(level) / math.ln10);
+    return db.isFinite ? db : _meterFloorDb;
+  }
+
+  double? _dbToLevel(double? db) {
+    if (db == null) return null;
+    if (!db.isFinite) return 0;
+    if (db <= _meterFloorDb) return 0;
+    if (db >= 0) return 1;
+    return math.pow(10, db / 20).toDouble().clamp(0.0, 1.0);
+  }
+
+  void _resetAudioMonitoring() {
+    _audioMetersAvailable = false;
+    _lastAudibleAtByInput.clear();
   }
 
   void _handleSocketError(Object error) {
@@ -1188,6 +1390,8 @@ class RealObsWebSocketService implements ObsWebSocketService {
     String? reason,
   }) {
     _identified = false;
+    _statsService.setConnected(false);
+    _resetAudioMonitoring();
 
     _failPendingRequests(
       AppException(
@@ -1199,6 +1403,9 @@ class RealObsWebSocketService implements ObsWebSocketService {
     _emitState(
       _state.copyWith(
         connectionStatus: status,
+        audioMetersAvailable: false,
+        microphoneSilent: false,
+        silentMicrophoneName: null,
         lastError: reason,
       ),
     );
@@ -1212,10 +1419,15 @@ class RealObsWebSocketService implements ObsWebSocketService {
     ConnectionStatus status,
     String message,
   ) async {
+    _statsService.setConnected(false);
     await _tearDownConnection(emitDisconnected: false);
+    _resetAudioMonitoring();
     _emitState(
       _state.copyWith(
         connectionStatus: status,
+        audioMetersAvailable: false,
+        microphoneSilent: false,
+        silentMicrophoneName: null,
         lastError: message,
       ),
     );
@@ -1227,6 +1439,8 @@ class RealObsWebSocketService implements ObsWebSocketService {
 
   Future<void> _tearDownConnection({required bool emitDisconnected}) async {
     _identified = false;
+    _statsService.setConnected(false);
+    _resetAudioMonitoring();
 
     await _subscription?.cancel();
     _subscription = null;
@@ -1240,6 +1454,9 @@ class RealObsWebSocketService implements ObsWebSocketService {
       _emitState(
         _state.copyWith(
           connectionStatus: ConnectionStatus.disconnected,
+          audioMetersAvailable: false,
+          microphoneSilent: false,
+          silentMicrophoneName: null,
           clearLastError: true,
         ),
       );
@@ -1425,6 +1642,7 @@ class RealObsWebSocketService implements ObsWebSocketService {
 
   void dispose() {
     _disposed = true;
+    _statsService.dispose();
     _reconnectTimer?.cancel();
     _subscription?.cancel();
     _channel?.sink.close();

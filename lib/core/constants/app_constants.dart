@@ -19,6 +19,14 @@ class AppConstants {
   static const int defaultPageColumns = 3;
   static const int defaultPageRows = 4;
 
+  static const String premiumProductId = 'deckpilot_premium_unlock';
+  static const String premiumPriceFallback = r'$4.99';
+  static const int freeSceneButtonLimit = 6;
+  static const int freePageLimit = 1;
+  static const int freeMacroLimit = 1;
+  static const int freeMacroActionLimit = 3;
+  static const int freeLockedPagePreviewCount = 2;
+
   static const int reviewInstallMinDays = 3;
   static const int reviewMinAppOpens = 5;
   static const int reviewMinSuccessfulConnections = 3;

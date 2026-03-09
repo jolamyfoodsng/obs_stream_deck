@@ -11,6 +11,10 @@ enum MacroActionType {
   stopStream,
   startRecording,
   stopRecording,
+  startVirtualCamera,
+  stopVirtualCamera,
+  enableStudioMode,
+  disableStudioMode,
   delay,
   runMacro,
 }
