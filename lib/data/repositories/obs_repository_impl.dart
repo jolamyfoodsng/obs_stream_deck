@@ -70,6 +70,17 @@ class ObsRepositoryImpl implements ObsRepository {
   }
 
   @override
+  void updateConnectionPreferences({
+    bool? autoReconnect,
+    bool? rememberConnectionInfo,
+  }) {
+    service.updateConnectionPreferences(
+      autoReconnect: autoReconnect,
+      rememberConnectionInfo: rememberConnectionInfo,
+    );
+  }
+
+  @override
   Future<void> runMacro(String macroId) async {
     final macros = await macroRepository.loadMacros();
     final macrosById = <String, MacroDefinition>{

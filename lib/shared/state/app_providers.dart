@@ -6,11 +6,13 @@ import '../../core/constants/app_constants.dart';
 import '../../core/constants/storage_keys.dart';
 import '../../core/services/local_storage_service.dart';
 import '../../core/services/layout_preset_service.dart';
+import '../../core/services/connection_diagnostics_service.dart';
 import '../../core/services/mock_obs_websocket_service.dart';
 import '../../core/services/obs_auto_discovery_service.dart';
 import '../../core/services/obs_websocket_service.dart';
 import '../../core/services/premium_billing_service.dart';
 import '../../core/services/real_obs_websocket_service.dart';
+import '../../core/services/review_prompt_service.dart';
 import '../../data/datasources/connection_local_datasource.dart';
 import '../../data/datasources/controller_local_datasource.dart';
 import '../../data/datasources/macro_local_datasource.dart';
@@ -32,6 +34,7 @@ import '../../domain/usecases/load_controller_pages_usecase.dart';
 import '../../domain/usecases/run_macro_usecase.dart';
 import 'app_engagement_controller.dart';
 import 'premium_controller.dart';
+import 'quick_controls_settings_controller.dart';
 
 final sharedPreferencesProvider = Provider<SharedPreferences>(
   (ref) =>
@@ -42,17 +45,22 @@ final localStorageServiceProvider = Provider<LocalStorageService>((ref) {
   return LocalStorageService(ref.watch(sharedPreferencesProvider));
 });
 
-final inAppReviewProvider = Provider<InAppReview>((ref) {
-  return InAppReview.instance;
+final reviewPromptServiceProvider = Provider<ReviewPromptService>((ref) {
+  return InAppReviewPromptService(inAppReview: InAppReview.instance);
 });
 
 final premiumBillingServiceProvider = Provider<PremiumBillingService>((ref) {
-  return PremiumBillingService();
+  return InAppPurchasePremiumBillingService();
 });
 
 final obsAutoDiscoveryServiceProvider =
     Provider<ObsAutoDiscoveryService>((ref) {
   return const ObsAutoDiscoveryService();
+});
+
+final connectionDiagnosticsServiceProvider =
+    Provider<ConnectionDiagnosticsService>((ref) {
+  return const ConnectionDiagnosticsService();
 });
 
 final obsWebSocketServiceProvider = Provider<ObsWebSocketService>((ref) {
@@ -178,12 +186,18 @@ final scenePreviewModeProvider =
   return ScenePreviewModeController(ref.watch(localStorageServiceProvider));
 });
 
+final quickControlsSettingsProvider = StateNotifierProvider<
+    QuickControlsSettingsController, QuickControlsSettings>((ref) {
+  return QuickControlsSettingsController(
+      ref.watch(localStorageServiceProvider));
+});
+
 final appEngagementControllerProvider =
     StateNotifierProvider<AppEngagementController, AppEngagementState>((ref) {
   return AppEngagementController(
     localStorage: ref.watch(localStorageServiceProvider),
     obsRepository: ref.watch(obsRepositoryProvider),
-    inAppReview: ref.watch(inAppReviewProvider),
+    reviewPromptService: ref.watch(reviewPromptServiceProvider),
   );
 });
 

@@ -12,11 +12,11 @@ class ConnectToObsUseCase {
   final ObsRepository obsRepository;
 
   Future<void> call(ObsConnectionConfig config) async {
+    await obsRepository.connect(config);
     if (config.rememberConnectionInfo) {
       await connectionRepository.saveConfig(config);
     } else {
       await connectionRepository.clearConfig();
     }
-    await obsRepository.connect(config);
   }
 }

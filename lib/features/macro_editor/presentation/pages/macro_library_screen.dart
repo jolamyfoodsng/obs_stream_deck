@@ -45,6 +45,8 @@ class MacroLibraryScreen extends ConsumerWidget {
       isPremium: premium.isPremium,
       macros: state.macros,
     );
+    final hasAccessibleMacros = accessibleMacros.isNotEmpty;
+    final showCreateFab = !volunteerMode && hasAccessibleMacros;
 
     Future<void> openUpgrade([PremiumFeature feature = PremiumFeature.macros]) {
       return showPremiumUpgradeModal(
@@ -103,17 +105,13 @@ class MacroLibraryScreen extends ConsumerWidget {
                         'Create automation buttons that perform multiple OBS actions.',
                     padding: EdgeInsets.fromLTRB(0, 0, 0, 12),
                   ),
-                  if (!premium.isPremium) ...<Widget>[
-                    _FreeMacroPlanCard(
-                      canCreateMacro: canCreateMacro,
-                      onCreate: volunteerMode ? null : () { handleCreateMacro(); },
-                      onUpgrade: () { openUpgrade(); },
-                    ),
-                    const SizedBox(height: 12),
-                  ],
                   if (accessibleMacros.isEmpty)
                     _EmptyMacrosState(
-                      onCreate: volunteerMode ? null : () { handleCreateMacro(); },
+                      onCreate: volunteerMode
+                          ? null
+                          : () {
+                              handleCreateMacro();
+                            },
                     )
                   else
                     ...accessibleMacros.map(
@@ -346,83 +344,21 @@ class MacroLibraryScreen extends ConsumerWidget {
                 ],
               ),
       ),
-      floatingActionButton: volunteerMode
-          ? null
-          : FloatingActionButton.extended(
+      floatingActionButton: showCreateFab
+          ? FloatingActionButton.extended(
               onPressed: () {
                 handleCreateMacro();
               },
-              icon: const Icon(Icons.add),
-              label: Text(
-                canCreateMacro || premium.isPremium
-                    ? 'Create Macro'
-                    : 'Unlock Macros',
+              icon: Icon(
+                premium.isPremium || canCreateMacro
+                    ? Icons.add
+                    : Icons.lock_outline,
               ),
-            ),
+              label: const Text('Create Macro'),
+            )
+          : null,
       bottomNavigationBar: const AppBottomNav(
         currentTab: AppBottomNavTab.macros,
-      ),
-    );
-  }
-}
-
-class _FreeMacroPlanCard extends StatelessWidget {
-  const _FreeMacroPlanCard({
-    required this.canCreateMacro,
-    required this.onCreate,
-    required this.onUpgrade,
-  });
-
-  final bool canCreateMacro;
-  final VoidCallback? onCreate;
-  final VoidCallback onUpgrade;
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Row(
-              children: <Widget>[
-                Text(
-                  'Free Plan',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
-                ),
-                const SizedBox(width: 8),
-                const ProBadge(compact: true, label: 'PREMIUM'),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Try macros before upgrading. Free includes ${AppConstants.freeMacroLimit} macro with up to ${AppConstants.freeMacroActionLimit} actions.',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-            ),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: <Widget>[
-                FilledButton.tonalIcon(
-                  onPressed: canCreateMacro ? onCreate : null,
-                  icon: const Icon(Icons.add),
-                  label: const Text('Create Free Macro'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: onUpgrade,
-                  icon: const Icon(Icons.auto_awesome),
-                  label: const Text('Unlock Unlimited'),
-                ),
-              ],
-            ),
-          ],
-        ),
       ),
     );
   }

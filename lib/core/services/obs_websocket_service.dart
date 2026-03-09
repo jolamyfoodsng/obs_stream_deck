@@ -38,4 +38,8 @@ abstract class ObsWebSocketService {
   });
   Future<void> executeAction(ButtonAction action);
   void setAppInForeground(bool isForeground);
+  void updateConnectionPreferences({
+    bool? autoReconnect,
+    bool? rememberConnectionInfo,
+  });
 }

@@ -54,6 +54,7 @@ class _PageManagerScreenState extends ConsumerState<PageManagerScreen> {
     final premium = ref.watch(premiumControllerProvider);
 
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       appBar: AppBar(
         leading: const AppBackButton(),
         title: const Text('Pages'),
@@ -778,7 +779,9 @@ class _CreatePageSheetState extends State<_CreatePageSheet> {
   Widget build(BuildContext context) {
     final inset = MediaQuery.viewInsetsOf(context).bottom;
 
-    return Padding(
+    return AnimatedPadding(
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOut,
       padding: EdgeInsets.only(bottom: inset),
       child: Container(
         decoration: BoxDecoration(
@@ -787,7 +790,7 @@ class _CreatePageSheetState extends State<_CreatePageSheet> {
         ),
         child: SafeArea(
           top: false,
-          child: Padding(
+          child: SingleChildScrollView(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
             child: Column(
               mainAxisSize: MainAxisSize.min,

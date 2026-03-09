@@ -24,4 +24,8 @@ abstract class ObsRepository {
   Future<void> executeAction(ButtonAction action);
   Future<void> runMacro(String macroId);
   void setAppInForeground(bool isForeground);
+  void updateConnectionPreferences({
+    bool? autoReconnect,
+    bool? rememberConnectionInfo,
+  });
 }

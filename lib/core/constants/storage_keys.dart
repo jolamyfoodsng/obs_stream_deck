@@ -10,12 +10,18 @@ class StorageKeys {
   static const String lastReviewPromptAt = 'last_review_prompt_at';
   static const String tutorialCompleted = 'tutorial_completed';
   static const String tutorialPending = 'tutorial_pending';
+  static const String connectionGuideDismissed = 'connection_guide_dismissed';
+  static const String connectionAutoReconnectPref =
+      'connection_auto_reconnect_pref';
+  static const String connectionRememberInfoPref =
+      'connection_remember_info_pref';
   static const String controllerPages = 'controller_pages';
   static const String macros = 'macros';
   static const String defaultPageId = 'default_page_id';
   static const String volunteerMode = 'volunteer_mode';
   static const String scenePreviewMode = 'scene_preview_mode';
   static const String sceneThumbnailCache = 'scene_thumbnail_cache';
+  static const String quickControlsEnabled = 'quick_controls_enabled';
   static const String layoutPresets = 'layout_presets';
   static const String premiumUnlocked = 'premium_unlocked';
   static const String premiumUnlockedAt = 'premium_unlocked_at';

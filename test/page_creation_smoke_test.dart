@@ -29,8 +29,16 @@ void main() {
       (tester) async {
     await pumpApp(tester);
 
-    await tester.tap(find.byIcon(Icons.add_box_outlined));
-    await tester.pumpAndSettle();
+    final addPageButton = find.byIcon(Icons.add_box_outlined);
+    if (addPageButton.evaluate().isNotEmpty) {
+      await tester.tap(addPageButton);
+      await tester.pumpAndSettle();
+    } else {
+      await tester.tap(find.byIcon(Icons.more_vert));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Create Page'));
+      await tester.pumpAndSettle();
+    }
 
     await tester.enterText(find.byType(TextField), 'Controller Test Page');
     await tester.pumpAndSettle();

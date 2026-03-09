@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:developer' as developer;
 import 'dart:io';
 import 'dart:math' as math;
 
@@ -63,7 +64,10 @@ class RealObsWebSocketService implements ObsWebSocketService {
   bool _manualDisconnect = false;
   bool _disposed = false;
   bool _audioMetersAvailable = false;
+  bool _authRequiredForSession = false;
+  bool _receivedHello = false;
   int _requestCounter = 0;
+  String? _protocolError;
   late final ObsStatsService _statsService;
   final Map<String, DateTime> _lastAudibleAtByInput = <String, DateTime>{};
 
@@ -99,9 +103,13 @@ class RealObsWebSocketService implements ObsWebSocketService {
   @override
   Future<void> connect(ObsConnectionConfig config) async {
     if (_disposed) return;
+    final connectStopwatch = Stopwatch()..start();
 
     _manualDisconnect = false;
     _lastConfig = config;
+    _authRequiredForSession = false;
+    _receivedHello = false;
+    _protocolError = null;
 
     await _tearDownConnection(emitDisconnected: false);
     _resetAudioMonitoring();
@@ -115,6 +123,10 @@ class RealObsWebSocketService implements ObsWebSocketService {
     ));
 
     try {
+      developer.log(
+        'Connecting to OBS host=${config.host} port=${config.port} method=${config.connectionMethod.name}',
+        name: 'DeckPilot.Connection',
+      );
       final uri = Uri.parse('ws://${config.host}:${config.port}');
       final socket = await WebSocket.connect(uri.toString())
           .timeout(const Duration(seconds: 8));
@@ -132,19 +144,42 @@ class RealObsWebSocketService implements ObsWebSocketService {
 
       _statsService.setConnected(true);
       await refreshState();
+      final latencyMs = await _measureConnectionLatency();
+      connectStopwatch.stop();
 
       _emitState(_state.copyWith(
         connectionStatus: ConnectionStatus.connected,
+        connectionLatencyMs: latencyMs,
         clearLastError: true,
       ));
+      developer.log(
+        'OBS connected host=${config.host} port=${config.port} authRequired=$_authRequiredForSession durationMs=${connectStopwatch.elapsedMilliseconds} latencyMs=${latencyMs ?? -1}',
+        name: 'DeckPilot.Connection',
+      );
     } on TimeoutException {
+      connectStopwatch.stop();
       await _failConnection(
         ConnectionStatus.error,
-        'Timed out while waiting for OBS authentication.',
+        _protocolError ??
+            (_receivedHello
+                ? 'OBS did not finish the obs-websocket v5 identify handshake.'
+                : 'Timed out while waiting for OBS authentication.'),
+      );
+      developer.log(
+        'OBS connection timeout host=${config.host} port=${config.port} authRequired=$_authRequiredForSession durationMs=${connectStopwatch.elapsedMilliseconds} reason=${_protocolError ?? 'identify_timeout'}',
+        name: 'DeckPilot.Connection',
+        level: 1000,
       );
     } catch (error) {
+      connectStopwatch.stop();
       final (status, message) = _classifyConnectionError(error);
       await _failConnection(status, message);
+      developer.log(
+        'OBS connection failed host=${config.host} port=${config.port} authRequired=$_authRequiredForSession durationMs=${connectStopwatch.elapsedMilliseconds} status=${status.name} reason=$message',
+        name: 'DeckPilot.Connection',
+        level: 1000,
+        error: error,
+      );
     }
   }
 
@@ -207,6 +242,18 @@ class RealObsWebSocketService implements ObsWebSocketService {
     await _statsService.refreshNow();
   }
 
+  Future<int?> _measureConnectionLatency() async {
+    if (!_identified) return null;
+    try {
+      final stopwatch = Stopwatch()..start();
+      await sendRequest('GetVersion');
+      stopwatch.stop();
+      return stopwatch.elapsedMilliseconds;
+    } catch (_) {
+      return null;
+    }
+  }
+
   @override
   Future<List<SceneItem>> fetchScenes() => _refreshScenesAndSources();
 
@@ -249,6 +296,34 @@ class RealObsWebSocketService implements ObsWebSocketService {
   @override
   void setAppInForeground(bool isForeground) {
     _statsService.setAppInForeground(isForeground);
+  }
+
+  @override
+  void updateConnectionPreferences({
+    bool? autoReconnect,
+    bool? rememberConnectionInfo,
+  }) {
+    final lastConfig = _lastConfig;
+    if (lastConfig != null) {
+      _lastConfig = lastConfig.copyWith(
+        autoReconnect: autoReconnect,
+        rememberConnectionInfo: rememberConnectionInfo,
+      );
+    }
+
+    if (autoReconnect == false) {
+      _reconnectTimer?.cancel();
+      _reconnectTimer = null;
+
+      if (_state.connectionStatus == ConnectionStatus.reconnecting) {
+        _emitState(
+          _state.copyWith(
+            connectionStatus: ConnectionStatus.disconnected,
+            lastError: 'OBS disconnected. Auto reconnect is disabled.',
+          ),
+        );
+      }
+    }
   }
 
   @override
@@ -949,6 +1024,11 @@ class RealObsWebSocketService implements ObsWebSocketService {
     final payload =
         data is Map ? data.cast<String, dynamic>() : <String, dynamic>{};
 
+    if (!_identified && op != 0 && op != 2) {
+      _protocolError =
+          'The server did not answer with the expected obs-websocket v5 hello.';
+    }
+
     switch (op) {
       case 0:
         _handleHello(payload);
@@ -964,6 +1044,7 @@ class RealObsWebSocketService implements ObsWebSocketService {
   }
 
   void _handleHello(Map<String, dynamic> helloData) {
+    _receivedHello = true;
     final rpcVersion = (helloData['rpcVersion'] as num?)?.toInt() ?? 1;
 
     final identifyData = <String, dynamic>{
@@ -973,6 +1054,7 @@ class RealObsWebSocketService implements ObsWebSocketService {
 
     final auth = helloData['authentication'];
     if (auth is Map) {
+      _authRequiredForSession = true;
       final challenge = auth['challenge'] as String?;
       final salt = auth['salt'] as String?;
       if (challenge != null && salt != null) {
@@ -986,6 +1068,7 @@ class RealObsWebSocketService implements ObsWebSocketService {
 
   void _handleIdentified() {
     _identified = true;
+    _protocolError = null;
     _identifyCompleter?.completeIfPending();
   }
 
@@ -1403,6 +1486,7 @@ class RealObsWebSocketService implements ObsWebSocketService {
     _emitState(
       _state.copyWith(
         connectionStatus: status,
+        connectionLatencyMs: null,
         audioMetersAvailable: false,
         microphoneSilent: false,
         silentMicrophoneName: null,
@@ -1425,6 +1509,7 @@ class RealObsWebSocketService implements ObsWebSocketService {
     _emitState(
       _state.copyWith(
         connectionStatus: status,
+        connectionLatencyMs: null,
         audioMetersAvailable: false,
         microphoneSilent: false,
         silentMicrophoneName: null,
@@ -1454,6 +1539,7 @@ class RealObsWebSocketService implements ObsWebSocketService {
       _emitState(
         _state.copyWith(
           connectionStatus: ConnectionStatus.disconnected,
+          connectionLatencyMs: null,
           audioMetersAvailable: false,
           microphoneSilent: false,
           silentMicrophoneName: null,
@@ -1528,11 +1614,25 @@ class RealObsWebSocketService implements ObsWebSocketService {
     final raw = error.toString();
     final lower = raw.toLowerCase();
 
-    if (error is SocketException ||
-        lower.contains('failed host lookup') ||
-        lower.contains('connection refused') ||
-        lower.contains('timed out')) {
-      return (ConnectionStatus.notFound, 'Could not reach OBS host/port.');
+    if (lower.contains('failed host lookup') || lower.contains('no address')) {
+      return (
+        ConnectionStatus.notFound,
+        'Host could not be found on the network.'
+      );
+    }
+
+    if (lower.contains('connection refused')) {
+      return (
+        ConnectionStatus.notFound,
+        'OBS WebSocket is not responding on this host/port.',
+      );
+    }
+
+    if (error is SocketException || lower.contains('timed out')) {
+      return (
+        ConnectionStatus.notFound,
+        'Timed out reaching OBS. Check Wi-Fi, firewall, or client isolation.',
+      );
     }
 
     if (lower.contains('authentication') || lower.contains('4005')) {
@@ -1540,7 +1640,14 @@ class RealObsWebSocketService implements ObsWebSocketService {
     }
 
     if (error is WebSocketException) {
-      return (ConnectionStatus.error, 'WebSocket handshake failed.');
+      return (
+        ConnectionStatus.error,
+        'OBS answered, but not with a compatible WebSocket handshake.',
+      );
+    }
+
+    if (_protocolError != null && _protocolError!.trim().isNotEmpty) {
+      return (ConnectionStatus.error, _protocolError!.trim());
     }
 
     return (ConnectionStatus.error, 'Unexpected OBS connection error.');

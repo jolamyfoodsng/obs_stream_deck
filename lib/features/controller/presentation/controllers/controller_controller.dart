@@ -10,6 +10,7 @@ import '../../../../domain/entities/controller_button.dart';
 import '../../../../domain/entities/controller_page.dart';
 import '../../../../domain/entities/connection_status.dart';
 import '../../../../domain/entities/obs_runtime_state.dart';
+import '../../../../domain/entities/quick_control.dart';
 import '../../../../domain/entities/recording_status.dart';
 import '../../../../domain/entities/scene_item.dart';
 import '../../../../domain/entities/scene_preview_mode.dart';
@@ -421,7 +422,9 @@ class ControllerController extends StateNotifier<ControllerScreenState> {
     );
   }
 
-  List<ControllerButton> quickControlButtons() {
+  List<ControllerButton> quickControlButtons({
+    required List<QuickControlId> controls,
+  }) {
     final obs = state.obsState;
     final micTarget = _resolveMicAudioTarget(obs);
     final streamRunning = _isStreamRunning(obs.streamStatus);
@@ -435,81 +438,91 @@ class ControllerController extends StateNotifier<ControllerScreenState> {
             .firstOrNull;
     final micMuted = micSource?.isMuted ?? false;
 
-    return <ControllerButton>[
-      ControllerButton(
-        id: 'quick_mic',
-        label: micMuted ? 'Unmute Mic' : 'Mute Mic',
-        icon: micMuted ? 'mic' : 'mic_off',
-        activeColor: '#22C55E',
-        inactiveColor: '#92400E',
-        category: DeckButtonCategory.audio,
-        action: ButtonAction(
-          type: micMuted ? ButtonActionType.unmute : ButtonActionType.mute,
-          targetId: micTarget,
-        ),
-        position: 0,
-      ),
-      ControllerButton(
-        id: 'quick_stream',
-        label: streamRunning ? 'Stop Stream' : 'Start Stream',
-        icon: streamRunning ? 'stop_circle' : 'play_arrow',
-        activeColor: '#EF4444',
-        inactiveColor: '#166534',
-        category: DeckButtonCategory.stream,
-        action: ButtonAction(
-          type: streamRunning
-              ? ButtonActionType.stopStream
-              : ButtonActionType.startStream,
-        ),
-        position: 1,
-        longPressTrigger: true,
-      ),
-      ControllerButton(
-        id: 'quick_recording',
-        label: recordingRunning ? 'Stop Recording' : 'Start Recording',
-        icon: recordingRunning ? 'stop' : 'radio_button_checked',
-        activeColor: '#EF4444',
-        inactiveColor: '#166534',
-        category: DeckButtonCategory.recording,
-        action: ButtonAction(
-          type: recordingRunning
-              ? ButtonActionType.stopRecording
-              : ButtonActionType.startRecording,
-        ),
-        position: 2,
-        longPressTrigger: true,
-      ),
-      ControllerButton(
-        id: 'quick_virtual_cam',
-        label: virtualCameraRunning
-            ? 'Stop Virtual Camera'
-            : 'Start Virtual Camera',
-        icon: virtualCameraRunning ? 'videocam_off' : 'videocam',
-        activeColor: '#EF4444',
-        inactiveColor: '#0E7490',
-        category: DeckButtonCategory.utility,
-        action: ButtonAction(
-          type: virtualCameraRunning
-              ? ButtonActionType.stopVirtualCamera
-              : ButtonActionType.startVirtualCamera,
-        ),
-        position: 3,
-      ),
-      ControllerButton(
-        id: 'quick_studio_mode',
-        label: studioModeEnabled ? 'Disable Studio Mode' : 'Enable Studio Mode',
-        icon: studioModeEnabled ? 'tune' : 'preview',
-        activeColor: '#F59E0B',
-        inactiveColor: '#1D4ED8',
-        category: DeckButtonCategory.utility,
-        action: ButtonAction(
-          type: studioModeEnabled
-              ? ButtonActionType.disableStudioMode
-              : ButtonActionType.enableStudioMode,
-        ),
-        position: 4,
-      ),
-    ];
+    return controls
+        .asMap()
+        .entries
+        .map(
+          (entry) => switch (entry.value) {
+            QuickControlId.muteMic => ControllerButton(
+                id: 'quick_mic',
+                label: micMuted ? 'Unmute Mic' : 'Mute Mic',
+                icon: micMuted ? 'mic' : 'mic_off',
+                activeColor: '#22C55E',
+                inactiveColor: '#92400E',
+                category: DeckButtonCategory.audio,
+                action: ButtonAction(
+                  type: micMuted
+                      ? ButtonActionType.unmute
+                      : ButtonActionType.mute,
+                  targetId: micTarget,
+                ),
+                position: entry.key,
+              ),
+            QuickControlId.stream => ControllerButton(
+                id: 'quick_stream',
+                label: streamRunning ? 'Stop Stream' : 'Start Stream',
+                icon: streamRunning ? 'stop_circle' : 'play_arrow',
+                activeColor: '#EF4444',
+                inactiveColor: '#166534',
+                category: DeckButtonCategory.stream,
+                action: ButtonAction(
+                  type: streamRunning
+                      ? ButtonActionType.stopStream
+                      : ButtonActionType.startStream,
+                ),
+                position: entry.key,
+                longPressTrigger: true,
+              ),
+            QuickControlId.recording => ControllerButton(
+                id: 'quick_recording',
+                label: recordingRunning ? 'Stop Recording' : 'Start Recording',
+                icon: recordingRunning ? 'stop' : 'radio_button_checked',
+                activeColor: '#EF4444',
+                inactiveColor: '#166534',
+                category: DeckButtonCategory.recording,
+                action: ButtonAction(
+                  type: recordingRunning
+                      ? ButtonActionType.stopRecording
+                      : ButtonActionType.startRecording,
+                ),
+                position: entry.key,
+                longPressTrigger: true,
+              ),
+            QuickControlId.virtualCamera => ControllerButton(
+                id: 'quick_virtual_cam',
+                label: virtualCameraRunning
+                    ? 'Stop Virtual Camera'
+                    : 'Start Virtual Camera',
+                icon: virtualCameraRunning ? 'videocam_off' : 'videocam',
+                activeColor: '#EF4444',
+                inactiveColor: '#0E7490',
+                category: DeckButtonCategory.utility,
+                action: ButtonAction(
+                  type: virtualCameraRunning
+                      ? ButtonActionType.stopVirtualCamera
+                      : ButtonActionType.startVirtualCamera,
+                ),
+                position: entry.key,
+              ),
+            QuickControlId.studioMode => ControllerButton(
+                id: 'quick_studio_mode',
+                label: studioModeEnabled
+                    ? 'Disable Studio Mode'
+                    : 'Enable Studio Mode',
+                icon: studioModeEnabled ? 'tune' : 'preview',
+                activeColor: '#F59E0B',
+                inactiveColor: '#1D4ED8',
+                category: DeckButtonCategory.utility,
+                action: ButtonAction(
+                  type: studioModeEnabled
+                      ? ButtonActionType.disableStudioMode
+                      : ButtonActionType.enableStudioMode,
+                ),
+                position: entry.key,
+              ),
+          },
+        )
+        .toList(growable: false);
   }
 
   Future<ControllerButtonInteractionOutcome> onButtonTap(

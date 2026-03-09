@@ -30,6 +30,7 @@ class ObsRuntimeState {
     required this.streamOutputBytes,
     required this.studioModeEnabled,
     required this.virtualCameraActive,
+    required this.connectionLatencyMs,
     required this.outputReconnecting,
     required this.outputCongestion,
     required this.outputSkippedFrames,
@@ -62,6 +63,7 @@ class ObsRuntimeState {
   final int streamOutputBytes;
   final bool studioModeEnabled;
   final bool virtualCameraActive;
+  final int? connectionLatencyMs;
   final bool outputReconnecting;
   final double outputCongestion;
   final int outputSkippedFrames;
@@ -105,6 +107,7 @@ class ObsRuntimeState {
       streamOutputBytes: 0,
       studioModeEnabled: false,
       virtualCameraActive: false,
+      connectionLatencyMs: null,
       outputReconnecting: false,
       outputCongestion: 0,
       outputSkippedFrames: 0,
@@ -139,6 +142,7 @@ class ObsRuntimeState {
     int? streamOutputBytes,
     bool? studioModeEnabled,
     bool? virtualCameraActive,
+    Object? connectionLatencyMs = _sentinel,
     bool? outputReconnecting,
     double? outputCongestion,
     int? outputSkippedFrames,
@@ -177,6 +181,9 @@ class ObsRuntimeState {
       streamOutputBytes: streamOutputBytes ?? this.streamOutputBytes,
       studioModeEnabled: studioModeEnabled ?? this.studioModeEnabled,
       virtualCameraActive: virtualCameraActive ?? this.virtualCameraActive,
+      connectionLatencyMs: identical(connectionLatencyMs, _sentinel)
+          ? this.connectionLatencyMs
+          : connectionLatencyMs as int?,
       outputReconnecting: outputReconnecting ?? this.outputReconnecting,
       outputCongestion: outputCongestion ?? this.outputCongestion,
       outputSkippedFrames: outputSkippedFrames ?? this.outputSkippedFrames,

@@ -1,11 +1,11 @@
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:in_app_review/in_app_review.dart';
 
 import '../../core/constants/app_constants.dart';
 import '../../core/constants/storage_keys.dart';
 import '../../core/services/local_storage_service.dart';
+import '../../core/services/review_prompt_service.dart';
 import '../../domain/entities/connection_status.dart';
 import '../../domain/entities/obs_runtime_state.dart';
 import '../../domain/entities/stream_status.dart';
@@ -80,17 +80,17 @@ class AppEngagementController extends StateNotifier<AppEngagementState> {
   AppEngagementController({
     required LocalStorageService localStorage,
     required ObsRepository obsRepository,
-    required InAppReview inAppReview,
+    required ReviewPromptService reviewPromptService,
   })  : _localStorage = localStorage,
         _obsRepository = obsRepository,
-        _inAppReview = inAppReview,
+        _reviewPromptService = reviewPromptService,
         super(AppEngagementState.initial()) {
     _init();
   }
 
   final LocalStorageService _localStorage;
   final ObsRepository _obsRepository;
-  final InAppReview _inAppReview;
+  final ReviewPromptService _reviewPromptService;
 
   StreamSubscription<ObsRuntimeState>? _obsStateSubscription;
   ObsRuntimeState? _lastObsState;
@@ -191,14 +191,11 @@ class AppEngagementController extends StateNotifier<AppEngagementState> {
 
     _reviewRequestInFlight = true;
     try {
-      final available = await _inAppReview.isAvailable();
+      final available = await _reviewPromptService.isAvailable();
       if (available) {
-        await _inAppReview.requestReview();
+        await _reviewPromptService.requestReview();
       } else {
-        await _inAppReview.openStoreListing(
-          appStoreId: null,
-          microsoftStoreId: null,
-        );
+        await _reviewPromptService.openStoreListing();
       }
       final now = DateTime.now();
       state = state.copyWith(lastReviewPromptAt: now);
@@ -267,8 +264,7 @@ class AppEngagementController extends StateNotifier<AppEngagementState> {
   }
 
   int _readInt(String key) {
-    final raw = _localStorage.getString(key);
-    return int.tryParse(raw ?? '') ?? 0;
+    return _localStorage.getInt(key) ?? 0;
   }
 
   DateTime? _readDate(String key) {

@@ -66,6 +66,9 @@ class _PremiumUpgradeSheetState extends ConsumerState<_PremiumUpgradeSheet> {
     return Padding(
       padding: EdgeInsets.only(bottom: bottomInset),
       child: Container(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.sizeOf(context).height * 0.9,
+        ),
         decoration: BoxDecoration(
           color: Theme.of(context).colorScheme.surface,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
@@ -75,7 +78,7 @@ class _PremiumUpgradeSheetState extends ConsumerState<_PremiumUpgradeSheet> {
         ),
         child: SafeArea(
           top: false,
-          child: Padding(
+          child: SingleChildScrollView(
             padding: const EdgeInsets.fromLTRB(18, 12, 18, 18),
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -244,9 +247,10 @@ class _PremiumUpgradeSheetState extends ConsumerState<_PremiumUpgradeSheet> {
                                 messenger
                                   ..hideCurrentSnackBar()
                                   ..showSnackBar(
-                                    const SnackBar(
+                                    SnackBar(
                                       content: Text(
-                                        'Billing is unavailable right now. Try again later.',
+                                        premium.error ??
+                                            'Billing is unavailable right now. Try again later.',
                                       ),
                                     ),
                                   );

@@ -14,9 +14,9 @@ import '../features/splash/presentation/pages/splash_screen.dart';
 class AppRouter {
   const AppRouter._();
 
-  static GoRouter router() {
+  static GoRouter router({String initialLocation = '/'}) {
     return GoRouter(
-      initialLocation: '/',
+      initialLocation: initialLocation,
       routes: <RouteBase>[
         GoRoute(
           path: '/',

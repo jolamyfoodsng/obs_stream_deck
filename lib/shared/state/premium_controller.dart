@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:developer' as developer;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
 
@@ -95,6 +97,7 @@ class PremiumController extends StateNotifier<PremiumState> {
     final storedPremium =
         _storage.getBool(StorageKeys.premiumUnlocked) ?? false;
 
+    if (!mounted) return;
     state = state.copyWith(
       isPremium: storedPremium,
       isLoading: true,
@@ -107,6 +110,7 @@ class PremiumController extends StateNotifier<PremiumState> {
         unawaited(_handlePurchaseUpdates(purchases));
       },
       onError: (Object error, StackTrace stackTrace) {
+        if (!mounted) return;
         state = state.copyWith(
           purchasePending: false,
           error: 'Billing error: ${_friendlyError(error)}',
@@ -115,59 +119,38 @@ class PremiumController extends StateNotifier<PremiumState> {
       },
     );
 
-    final available = await _billingService.isAvailable();
-    ProductDetails? product;
-    String? queryError;
-
-    if (available) {
-      final response = await _billingService
-          .queryProducts(<String>{AppConstants.premiumProductId});
-      if (response.error != null) {
-        queryError = response.error!.message;
-      }
-
-      product = response.productDetails
-          .where((item) => item.id == AppConstants.premiumProductId)
-          .firstOrNull;
-      _premiumProduct = product;
-
-      // Keep license state in sync across reinstalls/device switches.
-      unawaited(_billingService.restorePurchases());
-    }
-
+    final billingSnapshot =
+        await _loadBillingSnapshot(triggerRestore: true, surfaceUnavailable: true);
+    if (!mounted) return;
+    developer.log(
+      'Billing init available=${billingSnapshot.available} productLoaded=${billingSnapshot.product != null} error=${billingSnapshot.error ?? 'none'}',
+      name: 'DeckPilot.Billing',
+    );
     state = state.copyWith(
-      billingAvailable: available,
-      productPrice: product?.price ?? AppConstants.premiumPriceFallback,
+      billingAvailable: billingSnapshot.available,
+      productPrice:
+          billingSnapshot.product?.price ?? AppConstants.premiumPriceFallback,
       isLoading: false,
       ready: true,
-      error: queryError,
+      error: billingSnapshot.error,
+      clearError: billingSnapshot.error == null,
     );
   }
 
   Future<void> refresh() async {
-    final available = await _billingService.isAvailable();
-
-    ProductDetails? product;
-    String? queryError;
-    if (available) {
-      final response = await _billingService
-          .queryProducts(<String>{AppConstants.premiumProductId});
-      if (response.error != null) {
-        queryError = response.error!.message;
-      }
-      product = response.productDetails
-          .where((item) => item.id == AppConstants.premiumProductId)
-          .firstOrNull;
-      _premiumProduct = product;
-    } else {
-      _premiumProduct = null;
-    }
-
+    final billingSnapshot =
+        await _loadBillingSnapshot(triggerRestore: false, surfaceUnavailable: true);
+    if (!mounted) return;
+    developer.log(
+      'Billing refresh available=${billingSnapshot.available} productLoaded=${billingSnapshot.product != null} error=${billingSnapshot.error ?? 'none'}',
+      name: 'DeckPilot.Billing',
+    );
     state = state.copyWith(
-      billingAvailable: available,
-      productPrice: product?.price ?? AppConstants.premiumPriceFallback,
-      error: queryError,
-      clearError: queryError == null,
+      billingAvailable: billingSnapshot.available,
+      productPrice:
+          billingSnapshot.product?.price ?? AppConstants.premiumPriceFallback,
+      error: billingSnapshot.error,
+      clearError: billingSnapshot.error == null,
     );
   }
 
@@ -175,6 +158,11 @@ class PremiumController extends StateNotifier<PremiumState> {
     if (state.isPremium) return PremiumPurchaseResult.alreadyPremium;
 
     if (!state.billingAvailable || _premiumProduct == null) {
+      state = state.copyWith(
+        error: !state.billingAvailable
+            ? _billingUnavailableMessage()
+            : _missingProductMessage(),
+      );
       return PremiumPurchaseResult.unavailable;
     }
 
@@ -187,6 +175,10 @@ class PremiumController extends StateNotifier<PremiumState> {
 
     try {
       final started = await _billingService.buyOneTime(_premiumProduct!);
+      developer.log(
+        'Purchase flow started=$started product=${_premiumProduct!.id}',
+        name: 'DeckPilot.Billing',
+      );
       if (!started) {
         state = state.copyWith(purchasePending: false);
         _completePurchaseResult(PremiumPurchaseResult.cancelled);
@@ -217,18 +209,113 @@ class PremiumController extends StateNotifier<PremiumState> {
   }
 
   Future<void> restorePurchases() async {
-    if (!state.billingAvailable) return;
+    if (!state.billingAvailable) {
+      state = state.copyWith(error: _billingUnavailableMessage());
+      return;
+    }
     try {
       await _billingService.restorePurchases();
     } catch (error) {
+      if (!mounted) return;
       state = state.copyWith(
         error: 'Restore failed: ${_friendlyError(error)}',
       );
     }
   }
 
+  Future<_BillingSnapshot> _loadBillingSnapshot({
+    required bool triggerRestore,
+    required bool surfaceUnavailable,
+  }) async {
+    final available = await _billingService.isAvailable();
+    if (!available) {
+      _premiumProduct = null;
+      return _BillingSnapshot(
+        available: false,
+        error: surfaceUnavailable ? _billingUnavailableMessage() : null,
+      );
+    }
+
+    ProductDetails? product;
+    String? queryError;
+
+    try {
+      final response = await _billingService
+          .queryProducts(<String>{AppConstants.premiumProductId});
+      if (!mounted) {
+        return const _BillingSnapshot(available: false);
+      }
+
+      if (response.error != null) {
+        queryError = response.error!.message;
+      }
+
+      product = response.productDetails
+          .where((item) => item.id == AppConstants.premiumProductId)
+          .firstOrNull;
+
+      if (product == null) {
+        queryError = queryError ?? _missingProductMessage();
+      }
+
+      _premiumProduct = product;
+
+      if (triggerRestore) {
+        // Keep license state in sync across reinstalls/device switches.
+        unawaited(_billingService.restorePurchases());
+      }
+
+      return _BillingSnapshot(
+        available: true,
+        product: product,
+        error: queryError,
+      );
+    } catch (error) {
+      _premiumProduct = null;
+      return _BillingSnapshot(
+        available: true,
+        error: 'Billing catalog failed to load: ${_friendlyError(error)}',
+      );
+    }
+  }
+
+  String _billingUnavailableMessage() {
+    if (kIsWeb) {
+      return 'In-app purchases are unavailable in the web build.';
+    }
+
+    switch (defaultTargetPlatform) {
+      case TargetPlatform.android:
+        return 'Google Play billing is unavailable on this device. Use a Play Store-enabled Android device or emulator signed into Google Play.';
+      case TargetPlatform.iOS:
+        return 'App Store purchases are unavailable on this device.';
+      case TargetPlatform.macOS:
+      case TargetPlatform.windows:
+      case TargetPlatform.linux:
+        return 'In-app purchases are unavailable on this desktop build.';
+      case TargetPlatform.fuchsia:
+        return 'In-app purchases are unavailable on this device.';
+    }
+  }
+
+  String _missingProductMessage() {
+    const productId = AppConstants.premiumProductId;
+    if (!kIsWeb &&
+        defaultTargetPlatform == TargetPlatform.android &&
+        AppConstants.androidApplicationId.startsWith('com.example.')) {
+      return 'Google Play did not return product $productId. The Android package ID is still ${AppConstants.androidApplicationId}, which must match a real Play Console app before billing will work.';
+    }
+
+    return 'The premium product $productId was not returned by the store. Verify that it is active for this app build.';
+  }
+
   Future<void> _handlePurchaseUpdates(List<PurchaseDetails> purchases) async {
     for (final purchase in purchases) {
+      if (!mounted) return;
+      developer.log(
+        'Purchase update product=${purchase.productID} status=${purchase.status.name} pendingComplete=${purchase.pendingCompletePurchase}',
+        name: 'DeckPilot.Billing',
+      );
       if (purchase.productID != AppConstants.premiumProductId) {
         if (purchase.pendingCompletePurchase) {
           await _billingService.completePurchase(purchase);
@@ -243,6 +330,7 @@ class PremiumController extends StateNotifier<PremiumState> {
         case PurchaseStatus.purchased:
         case PurchaseStatus.restored:
           await _activatePremium();
+          if (!mounted) return;
           state = state.copyWith(purchasePending: false, clearError: true);
           _completePurchaseResult(PremiumPurchaseResult.success);
           break;
@@ -267,6 +355,7 @@ class PremiumController extends StateNotifier<PremiumState> {
   }
 
   Future<void> _activatePremium() async {
+    if (!mounted) return;
     state = state.copyWith(isPremium: true, clearError: true);
     await _storage.setBool(StorageKeys.premiumUnlocked, true);
     await _storage.setString(
@@ -296,4 +385,16 @@ class PremiumController extends StateNotifier<PremiumState> {
 
 extension _FirstOrNull<T> on Iterable<T> {
   T? get firstOrNull => isEmpty ? null : first;
+}
+
+class _BillingSnapshot {
+  const _BillingSnapshot({
+    required this.available,
+    this.product,
+    this.error,
+  });
+
+  final bool available;
+  final ProductDetails? product;
+  final String? error;
 }

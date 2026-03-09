@@ -29,6 +29,14 @@ import '../../../../shared/widgets/premium_upgrade_modal.dart';
 import '../controllers/controller_controller.dart';
 import '../models/controller_alert_banner.dart';
 
+enum _ControllerToolbarAction {
+  connection,
+  editMode,
+  createPage,
+  refreshPreviews,
+  settings,
+}
+
 class ControllerScreen extends ConsumerStatefulWidget {
   const ControllerScreen({super.key, this.initialPageId});
 
@@ -101,6 +109,7 @@ class _ControllerScreenState extends ConsumerState<ControllerScreen>
     final volunteerMode = ref.watch(volunteerModeProvider);
     final scenePreviewMode = ref.watch(scenePreviewModeProvider);
     final premium = ref.watch(premiumControllerProvider);
+    final quickControlsSettings = ref.watch(quickControlsSettingsProvider);
     final engagement = ref.watch(appEngagementControllerProvider);
     final isEditMode = !volunteerMode &&
         state.interactionMode == ControllerInteractionMode.edit;
@@ -135,8 +144,13 @@ class _ControllerScreenState extends ConsumerState<ControllerScreen>
 
     final page = state.currentPage;
     final obsState = state.obsState;
-    final quickControls = controller.quickControlButtons();
-    final useTabletLayout = !context.isMobile;
+    final quickControls = controller.quickControlButtons(
+      controls: quickControlsSettings.visibleControls(
+        isPremium: premium.isPremium,
+      ),
+    );
+    final viewport = MediaQuery.sizeOf(context);
+    final useTabletLayout = !context.isMobile && viewport.height >= 700;
 
     final volunteerBannerWidget =
         volunteerMode ? const _VolunteerModeBanner() : const SizedBox.shrink();
@@ -176,58 +190,121 @@ class _ControllerScreenState extends ConsumerState<ControllerScreen>
           : 'Control your OBS setup with custom buttons. Tap to run an action. Enter Edit Mode to long-press a button and edit it.',
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
     );
+    final compactAppBar = !useTabletLayout;
 
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       appBar: AppBar(
         automaticallyImplyLeading: false,
         title: Text(
           _isEmergencyPage(page) && !premium.isPremium
               ? '${page?.name ?? 'Emergency'} (PRO)'
               : (page?.name ?? 'Controller'),
+          overflow: TextOverflow.ellipsis,
         ),
-        actions: <Widget>[
-          if (!volunteerMode)
-            SizedBox(
-              key: _connectToObsKey,
-              child: IconButton(
-                icon: const Icon(Icons.wifi_tethering),
-                tooltip: 'Connection',
-                onPressed: () => context.go('/connection'),
-              ),
-            ),
-          _HeaderStatusStrip(
-            obsState: obsState,
-          ),
-          if (!volunteerMode)
-            SizedBox(
-              key: _editModeKey,
-              child: IconButton(
-                icon: Icon(isEditMode ? Icons.check : Icons.edit_outlined),
-                tooltip: isEditMode ? 'Exit Edit Mode' : 'Enter Edit Mode',
-                onPressed: controller.toggleInteractionMode,
-              ),
-            ),
-          if (!volunteerMode)
-            IconButton(
-              icon: const Icon(Icons.add_box_outlined),
-              tooltip: 'Create New Page',
-              onPressed: () {
-                unawaited(_openCreatePageSheet(controller));
-              },
-            ),
-          if (scenePreviewMode != ScenePreviewMode.off)
-            IconButton(
-              icon: const Icon(Icons.refresh),
-              tooltip: 'Refresh Scene Previews',
-              onPressed: () {
-                unawaited(_onRefreshScenePreviews(controller));
-              },
-            ),
-          IconButton(
-            icon: const Icon(Icons.settings_outlined),
-            onPressed: () => context.go('/settings'),
-          ),
-        ],
+        actions: compactAppBar
+            ? <Widget>[
+                _HeaderStatusStrip(
+                  obsState: obsState,
+                  compact: true,
+                ),
+                PopupMenuButton<_ControllerToolbarAction>(
+                  icon: const Icon(Icons.more_vert),
+                  onSelected: (action) {
+                    switch (action) {
+                      case _ControllerToolbarAction.connection:
+                        context.go('/connection');
+                        break;
+                      case _ControllerToolbarAction.editMode:
+                        controller.toggleInteractionMode();
+                        break;
+                      case _ControllerToolbarAction.createPage:
+                        unawaited(_openCreatePageSheet(controller));
+                        break;
+                      case _ControllerToolbarAction.refreshPreviews:
+                        unawaited(_onRefreshScenePreviews(controller));
+                        break;
+                      case _ControllerToolbarAction.settings:
+                        context.go('/settings');
+                        break;
+                    }
+                  },
+                  itemBuilder: (_) =>
+                      <PopupMenuEntry<_ControllerToolbarAction>>[
+                    if (!volunteerMode)
+                      const PopupMenuItem<_ControllerToolbarAction>(
+                        value: _ControllerToolbarAction.connection,
+                        child: Text('Connection'),
+                      ),
+                    if (!volunteerMode)
+                      PopupMenuItem<_ControllerToolbarAction>(
+                        value: _ControllerToolbarAction.editMode,
+                        child: Text(
+                          isEditMode ? 'Exit Edit Mode' : 'Enter Edit Mode',
+                        ),
+                      ),
+                    if (!volunteerMode)
+                      const PopupMenuItem<_ControllerToolbarAction>(
+                        value: _ControllerToolbarAction.createPage,
+                        child: Text('Create Page'),
+                      ),
+                    if (scenePreviewMode != ScenePreviewMode.off)
+                      const PopupMenuItem<_ControllerToolbarAction>(
+                        value: _ControllerToolbarAction.refreshPreviews,
+                        child: Text('Refresh Scene Previews'),
+                      ),
+                    const PopupMenuItem<_ControllerToolbarAction>(
+                      value: _ControllerToolbarAction.settings,
+                      child: Text('Settings'),
+                    ),
+                  ],
+                ),
+              ]
+            : <Widget>[
+                if (!volunteerMode)
+                  SizedBox(
+                    key: _connectToObsKey,
+                    child: IconButton(
+                      icon: const Icon(Icons.wifi_tethering),
+                      tooltip: 'Connection',
+                      onPressed: () => context.go('/connection'),
+                    ),
+                  ),
+                _HeaderStatusStrip(
+                  obsState: obsState,
+                ),
+                if (!volunteerMode)
+                  SizedBox(
+                    key: _editModeKey,
+                    child: IconButton(
+                      icon:
+                          Icon(isEditMode ? Icons.check : Icons.edit_outlined),
+                      tooltip:
+                          isEditMode ? 'Exit Edit Mode' : 'Enter Edit Mode',
+                      onPressed: controller.toggleInteractionMode,
+                    ),
+                  ),
+                if (!volunteerMode)
+                  IconButton(
+                    icon: const Icon(Icons.add_box_outlined),
+                    tooltip: 'Create New Page',
+                    onPressed: () {
+                      unawaited(_openCreatePageSheet(controller));
+                    },
+                  ),
+                if (scenePreviewMode != ScenePreviewMode.off)
+                  IconButton(
+                    icon: const Icon(Icons.refresh),
+                    tooltip: 'Refresh Scene Previews',
+                    onPressed: () {
+                      unawaited(_onRefreshScenePreviews(controller));
+                    },
+                  ),
+                IconButton(
+                  icon: const Icon(Icons.settings_outlined),
+                  onPressed: () => context.go('/settings'),
+                ),
+              ],
       ),
       body: SafeArea(
         child: state.isLoading
@@ -698,9 +775,9 @@ class _ControllerScreenState extends ConsumerState<ControllerScreen>
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
         ..showSnackBar(
-          const SnackBar(
-            content: Text('Hold this button to execute its action.'),
-            duration: Duration(milliseconds: 1300),
+          SnackBar(
+            content: Text(_holdToConfirmMessage(button)),
+            duration: const Duration(milliseconds: 1300),
           ),
         );
       return;
@@ -724,6 +801,10 @@ class _ControllerScreenState extends ConsumerState<ControllerScreen>
           ),
         );
     }
+  }
+
+  String _holdToConfirmMessage(ControllerButton button) {
+    return 'Press and hold "${button.label}" to confirm.';
   }
 
   Future<void> _onButtonLongPress(
@@ -1768,9 +1849,11 @@ class _ScenesLoadingState extends StatelessWidget {
 class _HeaderStatusStrip extends StatelessWidget {
   const _HeaderStatusStrip({
     required this.obsState,
+    this.compact = false,
   });
 
   final ObsRuntimeState obsState;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -1795,7 +1878,8 @@ class _HeaderStatusStrip extends StatelessWidget {
             obsState.outputCongestion >= 0.15 ||
             obsState.outputSkippedFramesPercent >= 1.0 ||
             obsState.droppedFramesPercent >= 1.0);
-    final showPerformanceMetrics = MediaQuery.sizeOf(context).width >= 900 &&
+    final showPerformanceMetrics = !compact &&
+        MediaQuery.sizeOf(context).width >= 900 &&
         connectionStatus == ConnectionStatus.connected;
 
     return Padding(
@@ -1803,7 +1887,19 @@ class _HeaderStatusStrip extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          _HeaderStatusPill(label: 'OBS', tone: connectionTone),
+          _HeaderStatusPill(
+            label: connectionStatus == ConnectionStatus.connected
+                ? 'OBS Connected'
+                : 'OBS',
+            tone: connectionTone,
+          ),
+          if (!compact &&
+              connectionStatus == ConnectionStatus.connected &&
+              obsState.connectionLatencyMs != null)
+            _HeaderStatusPill(
+              label: '${obsState.connectionLatencyMs} ms',
+              tone: Theme.of(context).colorScheme.primary,
+            ),
           if (streamStatus == StreamStatus.live)
             const _HeaderStatusPill(
               label: 'LIVE',
@@ -1814,17 +1910,17 @@ class _HeaderStatusStrip extends StatelessWidget {
               label: 'REC',
               tone: Colors.red,
             ),
-          if (obsState.virtualCameraActive)
+          if (!compact && obsState.virtualCameraActive)
             const _HeaderStatusPill(
               label: 'CAM',
               tone: Colors.cyan,
             ),
-          if (obsState.studioModeEnabled)
+          if (!compact && obsState.studioModeEnabled)
             const _HeaderStatusPill(
               label: 'STUDIO',
               tone: Colors.blueAccent,
             ),
-          if (showNetworkWarning)
+          if (!compact && showNetworkWarning)
             const _HeaderStatusPill(
               label: 'NET',
               tone: Colors.orange,
@@ -1967,59 +2063,52 @@ class _QuickControlsStrip extends StatelessWidget {
     if (effectiveButtons.isEmpty) {
       return const SizedBox.shrink();
     }
-    final hasProtectedButtons =
-        effectiveButtons.any((button) => button.longPressTrigger);
-
     return Padding(
       padding: EdgeInsets.fromLTRB(12, isTabletLayout ? 8 : 4, 12, 6),
-      child: Column(
-        children: <Widget>[
-          Row(
-            children: effectiveButtons.asMap().entries.map((entry) {
-              final index = entry.key;
-              final button = entry.value;
-              final state = resolveState(button);
-              final effectiveState = DeckButtonRuntimeState(
-                enabled: !forceDisabled && state.enabled,
-                active: state.active,
-                pending: state.pending,
-                hasError: state.hasError,
-              );
-              return Expanded(
-                child: Padding(
-                  padding: EdgeInsets.only(
-                    right: index == effectiveButtons.length - 1 ? 0 : 6,
-                  ),
-                  child: _QuickControlButton(
-                    button: button,
-                    state: effectiveState,
-                    isTabletLayout: isTabletLayout,
-                    onTap: () => onTap(button),
-                    onLongPress: () => onLongPress(button),
-                  ),
-                ),
-              );
-            }).toList(growable: false),
-          ),
-          const SizedBox(height: 6),
-          Divider(
-            height: 1,
-            color: colorScheme.outlineVariant.withValues(alpha: 0.45),
-          ),
-          if (hasProtectedButtons) ...<Widget>[
-            const SizedBox(height: 6),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                'Hold protected controls to confirm.',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: colorScheme.onSurfaceVariant,
-                      fontWeight: FontWeight.w600,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          const spacing = 8.0;
+          final availableWidth = constraints.maxWidth.isFinite
+              ? constraints.maxWidth
+              : MediaQuery.sizeOf(context).width - 24;
+          final buttonWidth = effectiveButtons.length == 1
+              ? availableWidth
+              : (availableWidth - spacing) / 2;
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Wrap(
+                spacing: spacing,
+                runSpacing: spacing,
+                children: effectiveButtons.map((button) {
+                  final state = resolveState(button);
+                  final effectiveState = DeckButtonRuntimeState(
+                    enabled: !forceDisabled && state.enabled,
+                    active: state.active,
+                    pending: state.pending,
+                    hasError: state.hasError,
+                  );
+                  return SizedBox(
+                    width: buttonWidth,
+                    child: _QuickControlButton(
+                      button: button,
+                      state: effectiveState,
+                      isTabletLayout: isTabletLayout,
+                      onTap: () => onTap(button),
+                      onLongPress: () => onLongPress(button),
                     ),
+                  );
+                }).toList(growable: false),
               ),
-            ),
-          ],
-        ],
+              const SizedBox(height: 6),
+              Divider(
+                height: 1,
+                color: colorScheme.outlineVariant.withValues(alpha: 0.45),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -2158,6 +2247,7 @@ class _QuickControlButtonState extends State<_QuickControlButton>
     final showHoldProgress = widget.button.longPressTrigger &&
         (_showHoldProgress || _holdController.value > 0);
     final buttonRadius = BorderRadius.circular(8);
+    final buttonHeight = widget.isTabletLayout ? 48.0 : 44.0;
 
     return Opacity(
       opacity: enabled ? 1 : 0.52,
@@ -2165,8 +2255,7 @@ class _QuickControlButtonState extends State<_QuickControlButton>
         color: tone.withValues(alpha: widget.state.active ? 0.14 : 0.05),
         borderRadius: buttonRadius,
         child: InkWell(
-          onTap:
-              enabled && !widget.button.longPressTrigger ? widget.onTap : null,
+          onTap: enabled ? widget.onTap : null,
           onLongPress: enabled && widget.button.longPressTrigger
               ? _markHoldTriggered
               : null,
@@ -2180,79 +2269,83 @@ class _QuickControlButtonState extends State<_QuickControlButton>
               ? (_) => _cancelHoldProgress()
               : null,
           borderRadius: buttonRadius,
-          child: Container(
-            height: widget.isTabletLayout ? 44 : 38,
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              borderRadius: buttonRadius,
-              border: Border.all(
-                color: tone.withValues(alpha: 0.2),
-                width: 0.7,
+          child: SizedBox(
+            height: buttonHeight,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                borderRadius: buttonRadius,
+                border: Border.all(
+                  color: tone.withValues(alpha: 0.2),
+                  width: 0.7,
+                ),
               ),
-            ),
-            child: Stack(
-              children: <Widget>[
-                if (showHoldProgress)
-                  Positioned.fill(
-                    child: ClipRRect(
-                      borderRadius: buttonRadius,
-                      child: AnimatedBuilder(
-                        animation: _holdController,
-                        builder: (context, _) {
-                          return Align(
-                            alignment: Alignment.centerLeft,
-                            child: FractionallySizedBox(
-                              widthFactor: _holdController.value.clamp(0, 1),
-                              child: Container(
-                                color: tone.withValues(alpha: 0.2),
+              child: Stack(
+                fit: StackFit.expand,
+                children: <Widget>[
+                  if (showHoldProgress)
+                    Positioned.fill(
+                      child: ClipRRect(
+                        borderRadius: buttonRadius,
+                        child: AnimatedBuilder(
+                          animation: _holdController,
+                          builder: (context, _) {
+                            return Align(
+                              alignment: Alignment.centerLeft,
+                              child: FractionallySizedBox(
+                                widthFactor: _holdController.value.clamp(0, 1),
+                                child: Container(
+                                  color: tone.withValues(alpha: 0.2),
+                                ),
                               ),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                  ),
-                Center(
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: <Widget>[
-                      Icon(
-                        _quickIcon(widget.button.icon),
-                        size: widget.isTabletLayout ? 16 : 14,
-                        color: tone,
-                      ),
-                      const SizedBox(width: 5),
-                      Flexible(
-                        child: Text(
-                          widget.button.label,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          textAlign: TextAlign.center,
-                          style: theme.textTheme.labelSmall?.copyWith(
-                            fontWeight: FontWeight.w600,
-                            fontSize: widget.isTabletLayout ? 12 : null,
-                            color: textColor,
-                          ),
+                            );
+                          },
                         ),
                       ),
-                    ],
-                  ),
-                ),
-                if (widget.state.pending)
-                  Positioned(
-                    left: 0,
-                    top: 0,
-                    child: SizedBox(
-                      width: 10,
-                      height: 10,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        valueColor:
-                            AlwaysStoppedAnimation<Color>(colorScheme.primary),
-                      ),
+                    ),
+                  Center(
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: <Widget>[
+                        Icon(
+                          _quickIcon(widget.button.icon),
+                          size: widget.isTabletLayout ? 16 : 14,
+                          color: tone,
+                        ),
+                        const SizedBox(width: 5),
+                        Flexible(
+                          child: Text(
+                            widget.button.label,
+                            maxLines: 2,
+                            textAlign: TextAlign.center,
+                            softWrap: true,
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              fontWeight: FontWeight.w600,
+                              fontSize: widget.isTabletLayout ? 12 : null,
+                              color: textColor,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-              ],
+                  if (widget.state.pending)
+                    Positioned(
+                      left: 0,
+                      top: 0,
+                      child: SizedBox(
+                        width: 10,
+                        height: 10,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                              colorScheme.primary),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
             ),
           ),
         ),
@@ -2435,7 +2528,9 @@ class _CreateControllerPageSheetState
   Widget build(BuildContext context) {
     final inset = MediaQuery.viewInsetsOf(context).bottom;
 
-    return Padding(
+    return AnimatedPadding(
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOut,
       padding: EdgeInsets.only(bottom: inset),
       child: Container(
         decoration: BoxDecoration(
@@ -2444,7 +2539,7 @@ class _CreateControllerPageSheetState
         ),
         child: SafeArea(
           top: false,
-          child: Padding(
+          child: SingleChildScrollView(
             padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
             child: Column(
               mainAxisSize: MainAxisSize.min,

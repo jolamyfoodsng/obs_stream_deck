@@ -48,6 +48,28 @@ class _DeckButtonState extends State<DeckButton> {
     final accentColor = widget.active ? activeColor : inactiveColor;
     final enabled = widget.enabled;
     final highlighted = widget.active && enabled;
+    final isActiveScene =
+        highlighted && widget.button.category == DeckButtonCategory.scene;
+    final activeSceneTone =
+        isActiveScene ? const Color(0xFF22C55E) : accentColor;
+    final borderColor = widget.hasError
+        ? Theme.of(context).colorScheme.error
+        : widget.selected
+            ? Theme.of(context).colorScheme.primary
+            : isActiveScene
+                ? activeSceneTone
+                : highlighted
+                    ? accentColor
+                    : Theme.of(context)
+                        .colorScheme
+                        .outline
+                        .withValues(alpha: 0.25);
+    final backgroundColor = isActiveScene
+        ? Color.alphaBlend(
+            activeSceneTone.withValues(alpha: 0.14),
+            Theme.of(context).colorScheme.surface,
+          )
+        : Theme.of(context).colorScheme.surface;
     final canInteract = !widget.pending &&
         (enabled || widget.allowInteractionWhenDisabled) &&
         (widget.onTap != null || widget.onLongPress != null);
@@ -84,28 +106,23 @@ class _DeckButtonState extends State<DeckButton> {
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 180),
               decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surface,
+                color: backgroundColor,
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(
-                  color: widget.hasError
-                      ? Theme.of(context).colorScheme.error
-                      : widget.selected
-                          ? Theme.of(context).colorScheme.primary
-                          : highlighted
-                              ? accentColor
-                              : Theme.of(context)
-                                  .colorScheme
-                                  .outline
-                                  .withValues(alpha: 0.25),
-                  width:
-                      widget.selected || highlighted || widget.hasError ? 2 : 1,
+                  color: borderColor,
+                  width: isActiveScene
+                      ? 2.8
+                      : (widget.selected || highlighted || widget.hasError
+                          ? 2
+                          : 1),
                 ),
                 boxShadow: (highlighted || widget.selected) && !widget.pending
                     ? <BoxShadow>[
                         BoxShadow(
-                          color: accentColor.withValues(alpha: 0.35),
-                          blurRadius: 16,
-                          spreadRadius: 0,
+                          color: (isActiveScene ? activeSceneTone : accentColor)
+                              .withValues(alpha: isActiveScene ? 0.42 : 0.35),
+                          blurRadius: isActiveScene ? 22 : 16,
+                          spreadRadius: isActiveScene ? 1 : 0,
                         ),
                       ]
                     : null,
@@ -126,6 +143,23 @@ class _DeckButtonState extends State<DeckButton> {
 
                   return Stack(
                     children: <Widget>[
+                      if (isActiveScene)
+                        Positioned.fill(
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(10),
+                              gradient: LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: <Color>[
+                                  activeSceneTone.withValues(alpha: 0.18),
+                                  Colors.transparent,
+                                  activeSceneTone.withValues(alpha: 0.08),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
                       if (thumbnailProvider != null)
                         Positioned.fill(
                           child: ClipRRect(
@@ -139,9 +173,56 @@ class _DeckButtonState extends State<DeckButton> {
                             ),
                           ),
                         ),
+                      if (isActiveScene)
+                        Positioned(
+                          top: 0,
+                          right: 0,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: activeSceneTone,
+                              borderRadius: BorderRadius.circular(999),
+                              boxShadow: <BoxShadow>[
+                                BoxShadow(
+                                  color:
+                                      activeSceneTone.withValues(alpha: 0.35),
+                                  blurRadius: 12,
+                                  spreadRadius: 0,
+                                ),
+                              ],
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: <Widget>[
+                                const Icon(
+                                  Icons.radio_button_checked,
+                                  size: 10,
+                                  color: Colors.white,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  'ACTIVE',
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .labelSmall
+                                      ?.copyWith(
+                                        fontSize: 9,
+                                        letterSpacing: 0.5,
+                                        fontWeight: FontWeight.w800,
+                                        color: Colors.white,
+                                      ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
                       Align(
                         child: Padding(
                           padding: EdgeInsets.only(
+                            top: isActiveScene ? (compact ? 12 : 14) : 0,
                             bottom: showHoldHint ? (compact ? 12 : 14) : 0,
                           ),
                           child: Column(
@@ -150,7 +231,9 @@ class _DeckButtonState extends State<DeckButton> {
                               Icon(
                                 IconMapper.fromName(widget.button.icon),
                                 color: enabled
-                                    ? accentColor
+                                    ? (isActiveScene
+                                        ? activeSceneTone
+                                        : accentColor)
                                     : Theme.of(context).colorScheme.outline,
                                 size: iconSize,
                               ),
@@ -167,10 +250,16 @@ class _DeckButtonState extends State<DeckButton> {
                                       fontSize: labelFontSize,
                                       height: 1.1,
                                       color: enabled
-                                          ? Theme.of(context)
+                                          ? (isActiveScene
+                                              ? activeSceneTone.withValues(
+                                                  alpha: 0.92,
+                                                )
+                                              : Theme.of(context)
+                                                  .colorScheme
+                                                  .onSurface)
+                                          : Theme.of(context)
                                               .colorScheme
-                                              .onSurface
-                                          : Theme.of(context).colorScheme.outline,
+                                              .outline,
                                     ),
                               ),
                             ],

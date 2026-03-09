@@ -261,6 +261,12 @@ class MockObsWebSocketService implements ObsWebSocketService {
   }
 
   @override
+  void updateConnectionPreferences({
+    bool? autoReconnect,
+    bool? rememberConnectionInfo,
+  }) {}
+
+  @override
   void setAppInForeground(bool isForeground) {}
 
   void _toggleMute(String? targetId, bool all) {

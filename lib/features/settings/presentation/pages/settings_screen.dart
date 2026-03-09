@@ -3,13 +3,16 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/constants/storage_keys.dart';
 import '../../../../domain/entities/layout_preset.dart';
-import '../../../../domain/entities/scene_preview_mode.dart';
-import '../../../../domain/entities/obs_connection_config.dart';
 import '../../../../domain/entities/premium_feature.dart';
+import '../../../../domain/entities/quick_control.dart';
+import '../../../../domain/entities/scene_preview_mode.dart';
 import '../../../controller/presentation/controllers/controller_controller.dart';
 import '../../../page_manager/presentation/controllers/page_manager_controller.dart';
+import '../../../../shared/state/app_engagement_controller.dart';
 import '../../../../shared/state/app_providers.dart';
+import '../../../../shared/state/quick_controls_settings_controller.dart';
 import '../../../../shared/widgets/app_back_button.dart';
 import '../../../../shared/widgets/app_bottom_nav.dart';
 import '../../../../shared/widgets/brand_identity.dart';
@@ -45,6 +48,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   Future<void> _loadConnectionPrefs() async {
     final repository = ref.read(connectionRepositoryProvider);
+    final storage = ref.read(localStorageServiceProvider);
     final config = await repository.loadConfig();
     if (!mounted) return;
 
@@ -58,30 +62,43 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
 
     setState(() {
+      _autoReconnect =
+          storage.getBool(StorageKeys.connectionAutoReconnectPref) ?? true;
+      _rememberConnectionInfo =
+          storage.getBool(StorageKeys.connectionRememberInfoPref) ?? true;
       _loadingConnectionPrefs = false;
     });
   }
 
   Future<void> _saveConnectionPrefs() async {
     final repository = ref.read(connectionRepositoryProvider);
+    final storage = ref.read(localStorageServiceProvider);
+    final obsRepository = ref.read(obsRepositoryProvider);
     final current = await repository.loadConfig();
 
-    final next = (current ??
-            const ObsConnectionConfig(
-              host: '127.0.0.1',
-              port: 4455,
-              password: '',
-            ))
-        .copyWith(
+    await storage.setBool(
+      StorageKeys.connectionAutoReconnectPref,
+      _autoReconnect,
+    );
+    await storage.setBool(
+      StorageKeys.connectionRememberInfoPref,
+      _rememberConnectionInfo,
+    );
+
+    if (!_rememberConnectionInfo) {
+      await repository.clearConfig();
+    } else if (current != null) {
+      final next = current.copyWith(
+        autoReconnect: _autoReconnect,
+        rememberConnectionInfo: _rememberConnectionInfo,
+      );
+      await repository.saveConfig(next);
+    }
+
+    obsRepository.updateConnectionPreferences(
       autoReconnect: _autoReconnect,
       rememberConnectionInfo: _rememberConnectionInfo,
     );
-
-    if (_rememberConnectionInfo) {
-      await repository.saveConfig(next);
-    } else {
-      await repository.clearConfig();
-    }
   }
 
   Future<void> _loadPresets() async {
@@ -324,6 +341,181 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     context.go('/controller');
   }
 
+  Future<void> _showSupportDialog() async {
+    final runtime = ref.read(obsRepositoryProvider).currentState();
+    final connectionConfig =
+        await ref.read(connectionRepositoryProvider).loadConfig();
+    if (!mounted) return;
+
+    final connectionSummary = connectionConfig == null
+        ? 'No saved OBS connection'
+        : '${connectionConfig.host}:${connectionConfig.port} • ${runtime.connectionStatus.name}';
+    final message = [
+      'DeckPilot Support',
+      'Describe what went wrong, what screen you were on, and what you expected to happen.',
+      '',
+      'Include this if you contact support:',
+      'OBS: $connectionSummary',
+      'Stream: ${runtime.streamStatus.name}',
+      'Recording: ${runtime.recordingStatus.name}',
+    ].join('\n');
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Contact Support'),
+          content: SizedBox(
+            width: 520,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                const Text(
+                  'Need help or want to report a problem?',
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Copy the support note below and send it with your issue details.',
+                ),
+                const SizedBox(height: 12),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context)
+                        .colorScheme
+                        .surfaceContainerHighest
+                        .withValues(alpha: 0.45),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: SelectableText(message),
+                ),
+              ],
+            ),
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Close'),
+            ),
+            FilledButton.icon(
+              onPressed: () async {
+                await Clipboard.setData(ClipboardData(text: message));
+                if (!dialogContext.mounted) return;
+                Navigator.of(dialogContext).pop();
+                if (!mounted) return;
+                ScaffoldMessenger.of(context)
+                  ..hideCurrentSnackBar()
+                  ..showSnackBar(
+                    const SnackBar(
+                      content: Text('Support note copied to clipboard.'),
+                    ),
+                  );
+              },
+              icon: const Icon(Icons.copy_outlined),
+              label: const Text('Copy Note'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  List<Widget> _buildFaqSection(AppEngagementState engagement) {
+    const divider = Divider(height: 1);
+    return <Widget>[
+      const AppSectionHeader(title: 'Help & FAQ'),
+      const SizedBox(height: 10),
+      Card(
+        child: Column(
+          children: <Widget>[
+            ListTile(
+              leading: const Icon(Icons.school_outlined),
+              title: const Text('Show Tutorial Again'),
+              subtitle: Text(
+                engagement.tutorialCompleted
+                    ? 'Replay the guided walkthrough.'
+                    : 'Show the first-time walkthrough.',
+              ),
+              onTap: _showTutorialAgain,
+            ),
+            divider,
+            ListTile(
+              leading: const Icon(Icons.star_rate_outlined),
+              title: const Text('Rate DeckPilot'),
+              subtitle: const Text('Leave feedback in the app store.'),
+              onTap: _rateDeckPilot,
+            ),
+            divider,
+            const _FaqTile(
+              icon: Icons.link_outlined,
+              title: 'How to connect to OBS',
+              answer:
+                  'Open OBS on your computer, enable WebSocket Server in Tools, then use Find OBS Automatically first. If needed, scan a QR code or enter the computer IP manually.',
+            ),
+            divider,
+            const _FaqTile(
+              icon: Icons.search_off_outlined,
+              title: 'Why OBS is not found',
+              answer:
+                  'OBS may be closed, WebSocket may be disabled, the port may be wrong, or both devices may not be on the same local network.',
+            ),
+            divider,
+            const _FaqTile(
+              icon: Icons.phonelink_lock_outlined,
+              title: 'Why 127.0.0.1 does not work on phone',
+              answer:
+                  'On a phone, 127.0.0.1 points back to the phone itself. Use the local IP address of the computer running OBS instead.',
+            ),
+            divider,
+            const _FaqTile(
+              icon: Icons.wifi_tethering_outlined,
+              title: 'Do both devices need the same Wi-Fi or hotspot?',
+              answer:
+                  'Usually yes. Your phone and the OBS computer should be on the same Wi-Fi or hotspot so they can reach each other directly.',
+            ),
+            divider,
+            const _FaqTile(
+              icon: Icons.usb_outlined,
+              title: 'How USB mode works',
+              answer:
+                  'USB mode is for cases where Wi-Fi is unavailable. It works through ADB reverse or a USB network/tethering connection so the phone can reach OBS locally.',
+            ),
+            divider,
+            const _FaqTile(
+              icon: Icons.qr_code_scanner_outlined,
+              title: 'How QR connect works',
+              answer:
+                  'Scan a QR code that contains the OBS host, port, and password. DeckPilot fills the details for you so you do not need to type them.',
+            ),
+            divider,
+            const _FaqTile(
+              icon: Icons.bolt_outlined,
+              title: 'How macros work',
+              answer:
+                  'Macros let one button run several OBS actions in order, such as switching scene, waiting, then starting stream or recording.',
+            ),
+            divider,
+            const _FaqTile(
+              icon: Icons.workspace_premium_outlined,
+              title: 'What Premium unlocks',
+              answer:
+                  'Premium unlocks unlimited pages and scene buttons, more macro power, scene previews, stream monitoring, and emergency controls.',
+            ),
+            divider,
+            ListTile(
+              leading: const Icon(Icons.support_agent_outlined),
+              title: const Text('Contact Support / Send Feedback'),
+              subtitle: const Text('Copy a support note and report a problem.'),
+              onTap: _showSupportDialog,
+            ),
+          ],
+        ),
+      ),
+    ];
+  }
+
   List<Widget> _buildObsConnectionSection() {
     return <Widget>[
       const AppSectionHeader(title: 'OBS Connection'),
@@ -352,8 +544,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             children: <Widget>[
               SwitchListTile.adaptive(
                 value: _autoReconnect,
-                title: const Text('Auto reconnect'),
-                subtitle: const Text('Reconnect automatically after drop.'),
+                title: const Text('Reconnect after disconnect'),
+                subtitle: const Text(
+                  'Retry automatically only if OBS disconnects after a successful connection.',
+                ),
                 onChanged: (value) async {
                   setState(() => _autoReconnect = value);
                   await _saveConnectionPrefs();
@@ -389,10 +583,112 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     ];
   }
 
+  List<Widget> _buildQuickControlsSection({
+    required bool isPremium,
+    required QuickControlsSettings quickControls,
+  }) {
+    return <Widget>[
+      const AppSectionHeader(
+        title: 'Quick Controls',
+        subtitle: 'Manage the top control buttons shown on the Control screen.',
+      ),
+      const SizedBox(height: 10),
+      Card(
+        child: Column(
+          children: <Widget>[
+            if (isPremium)
+              ...QuickControlId.values.asMap().entries.expand((entry) {
+                final index = entry.key;
+                final control = entry.value;
+                final enabled = quickControls.enabledControls.contains(control);
+                return <Widget>[
+                  SwitchListTile.adaptive(
+                    value: enabled,
+                    title: Text(control.settingsLabel),
+                    subtitle: Text(control.settingsDescription),
+                    secondary: Icon(_quickControlIcon(control)),
+                    onChanged: (value) async {
+                      await ref
+                          .read(quickControlsSettingsProvider.notifier)
+                          .setEnabled(control, value);
+                    },
+                  ),
+                  if (index != QuickControlId.values.length - 1)
+                    const Divider(height: 1),
+                ];
+              })
+            else ...<Widget>[
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+                child: Text(
+                  'Free plan uses the default quick controls. Upgrade to Premium to hide controls or add extra quick actions.',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                ),
+              ),
+              ...QuickControlId.values.asMap().entries.expand((entry) {
+                final index = entry.key;
+                final control = entry.value;
+                final isLocked = control.premiumOnly;
+                return <Widget>[
+                  ListTile(
+                    leading: Icon(_quickControlIcon(control)),
+                    title: Row(
+                      children: <Widget>[
+                        Expanded(child: Text(control.settingsLabel)),
+                        if (isLocked) const ProBadge(compact: true),
+                      ],
+                    ),
+                    subtitle: Text(
+                      isLocked
+                          ? '${control.settingsDescription} Premium only.'
+                          : '${control.settingsDescription} Included in Free.',
+                    ),
+                    trailing: Icon(
+                      isLocked
+                          ? Icons.lock_outline
+                          : Icons.check_circle_outline,
+                    ),
+                    onTap: isLocked
+                        ? () => showPremiumUpgradeModal(
+                              context,
+                              highlightedFeature:
+                                  PremiumFeature.advancedAutomation,
+                            )
+                        : null,
+                  ),
+                  if (index != QuickControlId.values.length - 1)
+                    const Divider(height: 1),
+                ];
+              }),
+            ],
+          ],
+        ),
+      ),
+    ];
+  }
+
+  IconData _quickControlIcon(QuickControlId control) {
+    switch (control) {
+      case QuickControlId.muteMic:
+        return Icons.mic_off_outlined;
+      case QuickControlId.stream:
+        return Icons.stream_outlined;
+      case QuickControlId.recording:
+        return Icons.fiber_manual_record;
+      case QuickControlId.virtualCamera:
+        return Icons.videocam_outlined;
+      case QuickControlId.studioMode:
+        return Icons.slideshow_outlined;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final volunteerMode = ref.watch(volunteerModeProvider);
     final premium = ref.watch(premiumControllerProvider);
+    final quickControls = ref.watch(quickControlsSettingsProvider);
     final scenePreviewMode = ref.watch(scenePreviewModeProvider);
     final scenePreviewEnabled =
         premium.isPremium && scenePreviewMode != ScenePreviewMode.off;
@@ -569,6 +865,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             const SizedBox(height: 10),
             ..._buildObsConnectionSection(),
             const SizedBox(height: 10),
+            ..._buildQuickControlsSection(
+              isPremium: premium.isPremium,
+              quickControls: quickControls,
+            ),
+            const SizedBox(height: 10),
             const AppSectionHeader(title: 'Premium'),
             const SizedBox(height: 10),
             Card(
@@ -650,6 +951,19 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                               ),
                             ),
                           ),
+                          if ((premium.error ?? '').trim().isNotEmpty) ...<Widget>[
+                            const SizedBox(height: 10),
+                            Text(
+                              premium.error!,
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodySmall
+                                  ?.copyWith(
+                                    color: Theme.of(context).colorScheme.error,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                            ),
+                          ],
                         ],
                       ),
               ),
@@ -820,106 +1134,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ),
               ),
             const SizedBox(height: 10),
-            const AppSectionHeader(title: 'Help & Onboarding'),
-            const SizedBox(height: 10),
-            Card(
-              child: Column(
-                children: <Widget>[
-                  ListTile(
-                    leading: const Icon(Icons.star_rate_outlined),
-                    title: const Text('Rate DeckPilot'),
-                    subtitle: const Text('Leave feedback in the app store.'),
-                    onTap: _rateDeckPilot,
-                  ),
-                  const Divider(height: 1),
-                  ListTile(
-                    leading: const Icon(Icons.school_outlined),
-                    title: const Text('Show Tutorial Again'),
-                    subtitle: Text(
-                      engagement.tutorialCompleted
-                          ? 'Replay the guided walkthrough.'
-                          : 'Show the first-time walkthrough.',
-                    ),
-                    onTap: _showTutorialAgain,
-                  ),
-                  const Divider(height: 1),
-                  const ExpansionTile(
-                    leading: Icon(Icons.help_outline),
-                    title: Text('How to connect to OBS'),
-                    childrenPadding:
-                        EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    children: <Widget>[
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          'Use Find OBS Automatically first. If nothing is found, scan a QR or use Manual Setup with your computer local IP and OBS password.',
-                        ),
-                      ),
-                    ],
-                  ),
-                  const Divider(height: 1),
-                  const ExpansionTile(
-                    leading: Icon(Icons.qr_code_scanner_outlined),
-                    title: Text('How QR connect works'),
-                    childrenPadding:
-                        EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    children: <Widget>[
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          'Scan a QR payload containing host, port, and password. The app auto-fills details and can connect immediately after confirmation.',
-                        ),
-                      ),
-                    ],
-                  ),
-                  const Divider(height: 1),
-                  const ExpansionTile(
-                    leading: Icon(Icons.wifi_tethering),
-                    title: Text('Same Wi-Fi / hotspot requirement'),
-                    childrenPadding:
-                        EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    children: <Widget>[
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          'Your phone and OBS computer should usually be on the same Wi-Fi or hotspot network. 127.0.0.1 on a phone points to the phone itself, not your OBS computer.',
-                        ),
-                      ),
-                    ],
-                  ),
-                  const Divider(height: 1),
-                  const ExpansionTile(
-                    leading: Icon(Icons.bolt_outlined),
-                    title: Text('How macros work'),
-                    childrenPadding:
-                        EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    children: <Widget>[
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          'Macros run multiple OBS actions in sequence. You can create, test, duplicate, and assign macros to controller buttons.',
-                        ),
-                      ),
-                    ],
-                  ),
-                  const Divider(height: 1),
-                  const ExpansionTile(
-                    leading: Icon(Icons.volunteer_activism_outlined),
-                    title: Text('What Volunteer Mode does'),
-                    childrenPadding:
-                        EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    children: <Widget>[
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          'Volunteer Mode hides advanced and dangerous controls so operators can safely run approved actions.',
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
+            ..._buildFaqSection(engagement),
             const SizedBox(height: 18),
             Text(
               'App Version 1.0.0',
@@ -932,6 +1147,36 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       bottomNavigationBar: const AppBottomNav(
         currentTab: AppBottomNavTab.settings,
       ),
+    );
+  }
+}
+
+class _FaqTile extends StatelessWidget {
+  const _FaqTile({
+    required this.icon,
+    required this.title,
+    required this.answer,
+  });
+
+  final IconData icon;
+  final String title;
+  final String answer;
+
+  @override
+  Widget build(BuildContext context) {
+    return ExpansionTile(
+      leading: Icon(icon),
+      title: Text(title),
+      childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+      expandedCrossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Text(
+          answer,
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+        ),
+      ],
     );
   }
 }

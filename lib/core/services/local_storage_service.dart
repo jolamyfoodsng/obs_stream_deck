@@ -7,12 +7,43 @@ class LocalStorageService {
 
   final SharedPreferences _preferences;
 
-  String? getString(String key) => _preferences.getString(key);
+  String? getString(String key) {
+    final value = _preferences.get(key);
+    if (value is String) return value;
+    if (value == null) return null;
+    return '$value';
+  }
 
-  bool? getBool(String key) => _preferences.getBool(key);
+  List<String>? getStringListOrNull(String key) {
+    final value = _preferences.get(key);
+    if (value is List<String>) return List<String>.from(value);
+    if (value is List) return value.whereType<String>().toList(growable: false);
+    return null;
+  }
+
+  int? getInt(String key) {
+    final value = _preferences.get(key);
+    if (value is int) return value;
+    if (value is String) return int.tryParse(value);
+    return null;
+  }
+
+  bool? getBool(String key) {
+    final value = _preferences.get(key);
+    if (value is bool) return value;
+    if (value is String) {
+      if (value.toLowerCase() == 'true') return true;
+      if (value.toLowerCase() == 'false') return false;
+    }
+    return null;
+  }
 
   Future<bool> setString(String key, String value) {
     return _preferences.setString(key, value);
+  }
+
+  Future<bool> setStringList(String key, List<String> value) {
+    return _preferences.setStringList(key, value);
   }
 
   Future<bool> setBool(String key, bool value) {
