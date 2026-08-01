@@ -1,9 +1,12 @@
 name: Release DeckPilot Desktop
 
-on:
+"on":
   push:
     tags:
       - 'desktop-v*'
+
+permissions:
+  contents: write
 
 jobs:
   release:
