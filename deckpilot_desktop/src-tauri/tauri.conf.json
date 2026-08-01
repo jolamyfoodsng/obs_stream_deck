@@ -29,7 +29,6 @@
     "active": true,
     "targets": "all",
     "resources": [
-      "../assets",
       "../node_modules",
       "../package-lock.json",
       "../package.json",
