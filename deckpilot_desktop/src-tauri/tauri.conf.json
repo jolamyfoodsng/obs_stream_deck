@@ -1,0 +1,61 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "DeckPilot Desktop",
+  "version": "1.0.0",
+  "identifier": "stream.creatorstudioslabs.deckpilotdesktop",
+  "build": {
+    "frontendDist": "../tauri_shell",
+    "devUrl": "http://localhost:1421",
+    "beforeDevCommand": "npm run dev"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "DeckPilot Desktop",
+        "width": 1320,
+        "height": 900,
+        "minWidth": 1080,
+        "minHeight": 760,
+        "resizable": true,
+        "fullscreen": false,
+        "center": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "resources": [
+      "../assets",
+      "../node_modules",
+      "../package-lock.json",
+      "../package.json",
+      "../server.js",
+      "../src"
+    ],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "android": {
+      "debugApplicationIdSuffix": ".debug"
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDcxMTc3RTZDQkI5OTIzMDAKUldRQUk1bTdiSDRYY1h0djIyK29EeUFpSDllUVI5em8yWUFNSjBiOGtTSFArUk41OHVDN09OcjcK",
+      "endpoints": [
+        "https://github.com/Tayoakosile/obs_stream_deck/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  }
+}

@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DeckPilot Agent</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+  <div id="app">
+    <nav id="sidebar">
+      <div class="nav-brand">
+        <span class="brand-icon">⚡</span>
+        <span class="brand-text">DeckPilot</span>
+        <button class="sidebar-toggle" id="sidebar-toggle" title="Toggle sidebar">
+          <svg id="toggle-icon-close" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="18" height="18" rx="2" />
+            <line x1="9" y1="3" x2="9" y2="21" />
+          </svg>
+          <svg id="toggle-icon-open" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none">
+            <rect x="3" y="3" width="18" height="18" rx="2" />
+            <line x1="9" y1="3" x2="9" y2="21" />
+          </svg>
+        </button>
+      </div>
+      <div class="nav-links">
+        <a href="#" class="nav-link active" data-page="dashboard" onclick="handleNav(event, 'dashboard')">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="7" height="9" />
+            <rect x="14" y="3" width="7" height="5" />
+            <rect x="14" y="12" width="7" height="9" />
+            <rect x="3" y="16" width="7" height="5" />
+          </svg>
+          <span class="nav-label">Home</span>
+        </a>
+        <a href="#" class="nav-link" data-page="automations" onclick="handleNav(event, 'automations')">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z" />
+          </svg>
+          <span class="nav-label">Automations</span>
+        </a>
+        <a href="#" class="nav-link" data-page="settings" onclick="handleNav(event, 'settings')">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path
+              d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+            <circle cx="12" cy="12" r="3" />
+          </svg>
+          <span class="nav-label">Settings</span>
+        </a>
+        <a href="#" class="nav-link" data-page="logs" onclick="handleNav(event, 'logs')">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+            <polyline points="14 2 14 8 20 8" />
+            <line x1="16" y1="13" x2="8" y2="13" />
+            <line x1="16" y1="17" x2="8" y2="17" />
+            <polyline points="10 9 9 9 8 9" />
+          </svg>
+          <span class="nav-label">Logs</span>
+        </a>
+      </div>
+      <div class="sidebar-footer">
+        <div class="sidebar-agent-status">
+          <span class="status-dot connected" id="sidebar-agent-dot"></span>
+          <span class="sidebar-agent-text">Agent running</span>
+        </div>
+        <div class="sidebar-agent-version">DeckPilot Desktop 1.0.0</div>
+      </div>
+    </nav>
+
+    <main id="content">
+      <!-- Dashboard Page -->
+      <div id="page-dashboard" class="page active">
+        <div class="page-header">
+          <h1>Home</h1>
+          <div id="home-status" class="status-pill">Not linked</div>
+        </div>
+
+        <!-- Setup Mode -->
+        <div id="setup-mode" style="display:none">
+          <div class="setup-hero">
+            <div class="setup-hero-icon">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+                stroke-linecap="round" stroke-linejoin="round">
+                <rect x="2" y="3" width="20" height="14" rx="2" />
+                <line x1="8" y1="21" x2="16" y2="21" />
+                <line x1="12" y1="17" x2="12" y2="21" />
+              </svg>
+            </div>
+            <h2 class="setup-hero-title">Link this computer to DeckPilot</h2>
+            <p class="setup-hero-desc">Access your automations, control OBS remotely, and manage this computer from your
+              mobile app.</p>
+            <div class="setup-hero-actions">
+              <button class="btn btn-primary btn-hero" id="btn-connect-mobile" onclick="openMobileModal()">Link with
+                Mobile App</button>
+              <span class="setup-hero-or">Or</span>
+              <button class="btn btn-secondary btn-hero" id="btn-signin-browser" onclick="openBrowserSignIn()">Sign in
+                using browser</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Ready Mode -->
+        <div id="ready-mode" style="display:none">
+          <div class="ready-grid" id="ready-grid">
+            <!-- Account & Sync -->
+            <div class="ready-card" id="ready-card-account">
+              <div class="ready-card-header">Account &amp; Sync</div>
+              <div class="ready-card-body">
+                <div class="ready-card-row"><span class="ready-label">Connected as</span><span class="ready-value"
+                    id="ready-account-email">--</span></div>
+                <div class="ready-card-row"><span class="ready-label">Workspace</span><span class="ready-value"
+                    id="ready-account-workspace">--</span></div>
+                <div class="ready-card-row"><span class="ready-label">Last sync</span><span class="ready-value"
+                    id="ready-account-last-sync">--</span></div>
+              </div>
+              <div class="ready-card-actions">
+                <button class="btn btn-primary btn-sm" id="btn-ready-sync" onclick="syncNow(this)">Sync Now</button>
+                <button class="btn btn-secondary btn-sm" onclick="openMobileModal()">Manage Connection</button>
+              </div>
+            </div>
+            <!-- Phone Connection -->
+            <div class="ready-card" id="ready-card-phone">
+              <div class="ready-card-header">Phone Connection</div>
+              <div class="ready-card-body">
+                <div class="ready-card-row"><span class="ready-label">Connected</span><span class="ready-value"
+                    id="ready-phone-name">--</span></div>
+                <div class="ready-card-row"><span class="ready-label">Connection</span><span class="ready-value"
+                    id="ready-phone-type">--</span></div>
+                <div class="ready-card-row"><span class="ready-label">Last active</span><span class="ready-value"
+                    id="ready-phone-last">--</span></div>
+              </div>
+              <div class="ready-card-actions">
+                <button class="btn btn-secondary btn-sm" onclick="openPhoneModal()">Manage Phone</button>
+              </div>
+            </div>
+            <!-- OBS Connection -->
+            <div class="ready-card" id="ready-card-obs">
+              <div class="ready-card-header">OBS Connection</div>
+              <div class="ready-card-body">
+                <div class="ready-card-row"><span class="ready-label">Status</span><span class="ready-value"
+                    id="ready-obs-status">Disconnected</span></div>
+                <div class="ready-card-row"><span class="ready-label">Current scene</span><span class="ready-value"
+                    id="ready-obs-scene">--</span></div>
+                <div class="ready-card-row"><span class="ready-label">Scenes</span><span class="ready-value"
+                    id="ready-obs-count">0</span></div>
+              </div>
+              <div class="ready-card-actions">
+                <button class="btn btn-secondary btn-sm" onclick="openObsModal()">OBS Settings</button>
+              </div>
+            </div>
+            <!-- Automation Runtime -->
+            <div class="ready-card" id="ready-card-automation">
+              <div class="ready-card-header">Automation Runtime</div>
+              <div class="ready-card-body">
+                <div class="ready-card-row"><span class="ready-label">Status</span><span class="ready-value"
+                    id="ready-auto-status">Running</span></div>
+                <div class="ready-card-row"><span class="ready-label">Active automations</span><span class="ready-value"
+                    id="ready-auto-count">0</span></div>
+                <div class="ready-card-row"><span class="ready-label">Last run</span><span class="ready-value"
+                    id="ready-auto-last">--</span></div>
+              </div>
+              <div class="ready-card-actions">
+                <button class="btn btn-secondary btn-sm" onclick="navigateTo('automations')">View Automations</button>
+              </div>
+            </div>
+          </div>
+          <!-- Recent Activity -->
+          <div class="activity-section" id="activity-section">
+            <div class="activity-section-header">Recent Activity</div>
+            <div id="activity-empty" class="activity-empty-state">No activity yet. Commands, connection events, and
+              automation runs will appear here.</div>
+            <div id="activity-list" class="activity-list"></div>
+            <button class="btn btn-secondary btn-sm" id="btn-view-all-logs" onclick="navigateTo('logs')"
+              style="margin-top:12px">View All Logs</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Automations Page -->
+      <div id="page-automations" class="page">
+        <div class="page-header">
+          <h1>Automations</h1>
+        </div>
+
+        <div class="automation-banner" id="automations-obs-banner">
+          OBS is not connected. Automations are synced and ready, but scene-based execution will wait until OBS
+
+          reconnects.
+        </div>
+
+        <div class="card-grid">
+          <div class="card">
+            <div class="card-header">
+              <h3>Runtime</h3>
+            </div>
+            <div class="card-body">
+              <div class="stat-row">
+                <span class="stat-label">Status</span>
+                <span class="stat-value" id="automation-page-status">Paused</span>
+              </div>
+              <div class="stat-row">
+                <span class="stat-label">Synced Rules</span>
+                <span class="stat-value" id="automation-page-count">0</span>
+              </div>
+              <div class="stat-row">
+                <span class="stat-label">Current Scene</span>
+                <span class="stat-value" id="automation-page-scene">--</span>
+              </div>
+              <div class="stat-row">
+                <span class="stat-label">Last Sync</span>
+                <span class="stat-value" id="automation-page-last-sync">Never</span>
+              </div>
+            </div>
+            <div class="card-actions">
+              <label class="toggle-label">
+                <input type="checkbox" id="toggle-automations-page" onchange="toggleAutomations()">
+                <span class="toggle-slider"></span>
+                Automations Active
+              </label>
+            </div>
+          </div>
+
+          <div class="card card-full">
+            <div class="card-header">
+              <h3>Synced Rules</h3>
+            </div>
+            <div class="card-body">
+              <div class="automation-list" id="automation-list"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Settings Page -->
+      <div id="page-settings" class="page">
+        <div class="page-header">
+          <h1>Settings</h1>
+        </div>
+        <div class="settings-form">
+          <div class="card">
+            <div class="card-header">
+              <h3>OBS WebSocket Connection</h3>
+            </div>
+            <div class="card-body">
+              <div class="form-group">
+                <label for="obs-host">Host</label>
+                <input type="text" id="obs-host" value="127.0.0.1" placeholder="127.0.0.1">
+              </div>
+              <div class="form-group">
+                <label for="obs-port">Port</label>
+                <input type="number" id="obs-port" value="4455" placeholder="4455">
+              </div>
+              <div class="form-group">
+                <label for="obs-password">Password</label>
+                <input type="password" id="obs-password" placeholder="OBS WebSocket password">
+              </div>
+            </div>
+            <div class="card-actions">
+              <button class="btn btn-primary" onclick="testConnection(this)">Test Connection</button>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <h3>Behavior</h3>
+            </div>
+            <div class="card-body">
+              <div class="form-group">
+                <label class="toggle-label">
+                  <input type="checkbox" id="auto-connect">
+                  <span class="toggle-slider"></span>
+                  Auto-connect to OBS on launch
+                </label>
+              </div>
+              <div class="form-group">
+                <label class="toggle-label">
+                  <input type="checkbox" id="allow-discovery">
+                  <span class="toggle-slider"></span>
+                  Allow network discovery
+                </label>
+              </div>
+              <div class="form-group">
+                <label class="toggle-label">
+                  <input type="checkbox" id="desktop-notifications" onchange="updateNotificationStatus(this.checked)">
+                  <span class="toggle-slider"></span>
+                  Show desktop notifications for automation alerts
+                </label>
+                <div class="form-help">When OBS triggers a synced alert rule, this computer shows a native macOS or Windows notification even if the phone app is closed.</div>
+              </div>
+              <div class="stat-row">
+                <span class="stat-label">Notifications</span>
+                <span class="stat-value" id="notification-status-text">Enabled</span>
+              </div>
+            </div>
+            <div class="card-actions">
+              <button class="btn btn-secondary" onclick="testDesktopNotification(this)">Test Notification</button>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <h3>Updates</h3>
+            </div>
+            <div class="card-body">
+              <div id="update-status" class="stat-row">
+                <span class="stat-label">Status</span>
+                <span class="stat-value" id="update-status-text">Checking...</span>
+              </div>
+            </div>
+            <div class="card-actions">
+              <button class="btn btn-primary" id="btn-check-update" onclick="checkForUpdate(this)">Check for
+                Updates</button>
+              <button class="btn btn-primary" id="btn-install-update" onclick="installUpdate(this)"
+                style="display:none">Install Update</button>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <h3>Account</h3>
+            </div>
+            <div class="card-body">
+              <div class="stat-row">
+                <span class="stat-label">Status</span>
+                <span class="stat-value" id="settings-account-status">Not linked</span>
+              </div>
+              <div class="stat-row" id="settings-account-email-row" style="display:none">
+                <span class="stat-label">Email</span>
+                <span class="stat-value" id="settings-account-email">--</span>
+              </div>
+              <div class="form-group">
+                <label for="desktop-name">Desktop Name</label>
+                <input type="text" id="desktop-name" placeholder="My Desktop">
+              </div>
+            </div>
+            <div class="card-actions">
+              <button class="btn btn-primary" id="btn-settings-link-account" onclick="openMobileModal()">Link this
+                computer</button>
+              <button class="btn btn-danger" id="btn-settings-unlink-account" onclick="unlinkAccount(this)"
+                style="display:none">Unlink Account</button>
+            </div>
+          </div>
+
+          <div class="form-actions">
+            <button class="btn btn-primary" onclick="saveSettings(this)">Save Settings</button>
+            <button class="btn btn-danger" onclick="resetSettings()">Reset to Defaults</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Logs Page -->
+      <div id="page-logs" class="page">
+        <div class="page-header">
+          <h1>Logs</h1>
+          <div class="header-actions">
+            <select id="log-filter" onchange="loadLogs()">
+              <option value="">All</option>
+              <option value="info">Info</option>
+              <option value="success">Success</option>
+              <option value="error">Error</option>
+              <option value="obs">OBS</option>
+              <option value="sync">Sync</option>
+              <option value="macro">Macro</option>
+            </select>
+            <button class="btn btn-secondary" onclick="loadLogs()">Refresh</button>
+            <button class="btn btn-danger" onclick="clearLogs()">Clear</button>
+          </div>
+        </div>
+        <div class="logs-container" id="logs-container"></div>
+      </div>
+    </main>
+  </div>
+
+  <!-- First-Run Consent Modal -->
+  <div id="consent-modal" class="modal-overlay" style="display:none">
+    <div class="modal-content" style="max-width:420px">
+      <h2 class="modal-title">DeckPilot Desktop Agent</h2>
+      <div class="modal-body" style="text-align:left">
+        <p style="margin-bottom:16px;font-size:13px;color:var(--text-secondary);line-height:1.6">
+          This agent runs on your computer and can:
+        </p>
+        <ul style="margin-bottom:16px;padding-left:20px;font-size:13px;color:var(--text-secondary);line-height:1.8">
+          <li>Receive commands from authorised devices</li>
+          <li>Control OBS Studio</li>
+          <li>Launch approved applications</li>
+          <li>Execute user-created macros</li>
+          <li>Synchronise workspace information</li>
+        </ul>
+        <p style="margin-bottom:16px;font-size:13px;color:var(--text-secondary);line-height:1.6">
+          Only devices you explicitly authorise can send commands. You can revoke access at any time.
+        </p>
+      </div>
+      <div class="modal-actions" style="justify-content:center;border-top:none;padding-top:0">
+        <button class="btn btn-primary" id="btn-accept-consent" onclick="acceptConsent(this)"
+          style="width:100%">Continue</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Link with Mobile App Modal -->
+  <div id="mobile-modal" class="modal-overlay" style="display:none">
+    <div class="modal-content">
+      <h2 class="modal-title">Scan this code with DeckPilot Mobile</h2>
+      <p class="modal-subtitle">Open DeckPilot on your phone and scan this QR code to link this computer to your
+        account.</p>
+      <div class="qr-code-container" id="mobile-qr-code">
+        <div class="qr-placeholder" style="padding:40px;color:var(--text-muted)">Generating QR code...</div>
+      </div>
+      <div class="manual-code-area">
+        <p class="manual-code-label">Or enter code:</p>
+        <div class="manual-code-value" id="mobile-manual-code">------</div>
+      </div>
+      <div class="link-expiry" id="mobile-countdown">Expires in 10:00</div>
+      <div class="link-desktop-info" id="mobile-desktop-info"></div>
+      <div class="link-status" id="mobile-status" style="display:none"></div>
+      <div class="link-error" id="mobile-error" style="display:none"></div>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" id="btn-cancel-mobile" onclick="closeMobileModal()">Cancel</button>
+        <button class="btn btn-primary" id="btn-generate-new-code" onclick="openMobileModal()"
+          style="display:none">Generate New Code</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Local Pairing Fallback Modal -->
+  <div id="local-fallback-modal" class="modal-overlay" style="display:none">
+    <div class="modal-content">
+      <h2 class="modal-title">Complete Local Connection</h2>
+      <p class="modal-subtitle">Your account is linked. Connect your phone and computer to the same Wi-Fi network to
+        enable faster local control.</p>
+      <div class="phone-creds">
+        <div class="phone-creds-row">
+          <span class="phone-creds-label">Local address</span>
+          <span class="phone-creds-value phone-pin" id="fallback-local-ip">Loading...</span>
+        </div>
+        <div class="phone-creds-row">
+          <span class="phone-creds-label">Temporary local code</span>
+          <span class="phone-creds-value phone-pin" id="fallback-local-pin">------</span>
+        </div>
+      </div>
+      <div class="link-status" id="fallback-status" style="display:none"></div>
+      <div class="link-error" id="fallback-error" style="display:none"></div>
+      <div class="modal-actions" style="margin-top:16px">
+        <button class="btn btn-secondary" onclick="closeLocalFallback()">Done for Now</button>
+        <button class="btn btn-primary" id="btn-retry-local" onclick="retryLocalPairing(this)">Retry Local
+          Connection</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Local Phone Connection Modal -->
+  <div id="phone-modal" class="modal-overlay" style="display:none">
+    <div class="modal-content">
+      <h2 class="modal-title">Connect your phone</h2>
+      <p class="modal-subtitle">Connect your phone and computer to the same Wi-Fi network, then enter the details below
+        in the DeckPilot mobile app.</p>
+      <div class="phone-creds">
+        <div class="phone-creds-row">
+          <span class="phone-creds-label">Connection code</span>
+          <span class="phone-creds-value" id="phone-code">------</span>
+        </div>
+        <div class="phone-creds-row">
+          <span class="phone-creds-label">Local PIN</span>
+          <span class="phone-creds-value phone-pin" id="phone-pin">------</span>
+        </div>
+        <div class="phone-creds-row">
+          <span class="phone-creds-label">Computer address</span>
+          <span class="phone-creds-value" id="phone-ip">Loading...</span>
+        </div>
+      </div>
+      <p class="phone-creds-note">Connection code identifies this desktop. Local PIN confirms the secure local
+        connection.</p>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" onclick="closePhoneModal()">Done</button>
+        <button class="btn btn-primary" id="btn-generate-codes" onclick="generatePhoneCodes(this)">Generate New
+          Codes</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- OBS Connection Modal -->
+  <div id="obs-modal" class="modal-overlay" style="display:none">
+    <div class="modal-content">
+      <h2 class="modal-title">Connect OBS</h2>
+      <div class="obs-form">
+        <div class="form-group">
+          <label for="obs-host">Host</label>
+          <input type="text" id="obs-host" value="127.0.0.1" placeholder="127.0.0.1">
+        </div>
+        <div class="form-group">
+          <label for="obs-port">Port</label>
+          <input type="number" id="obs-port" value="4455" placeholder="4455">
+        </div>
+        <div class="form-group">
+          <label for="obs-password">Password</label>
+          <input type="password" id="obs-password" placeholder="OBS WebSocket password">
+        </div>
+        <div class="obs-test-result" id="obs-test-result" style="display:none"></div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" onclick="closeObsModal()">Cancel</button>
+        <button class="btn btn-secondary" id="btn-test-obs" onclick="testObsConnection(this)">Test Connection</button>
+        <button class="btn btn-primary" id="btn-save-obs" onclick="saveObsConnection(this)">Save and Connect</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Notification Permission Modal -->
+  <div id="notification-permission-modal" class="modal-overlay" style="display:none">
+    <div class="modal-content" style="max-width:420px">
+      <h2 class="modal-title">Allow desktop notifications?</h2>
+      <p class="modal-subtitle">DeckPilot can keep watching OBS from this computer and show alerts when synced phone automations fire, even when the phone app is closed.</p>
+      <div class="modal-actions" style="justify-content:center">
+        <button class="btn btn-secondary" onclick="setNotificationPermission(false, this)">Not Now</button>
+        <button class="btn btn-primary" onclick="setNotificationPermission(true, this)">Allow Notifications</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast container -->
+  <div id="toast-container"></div>
+
+  <script type="module" src="main.js"></script>
+</body>
+
+</html>
