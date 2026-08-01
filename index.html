@@ -1,0 +1,550 @@
+<!DOCTYPE html><html class="dark" lang="en"><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>DeckPilot | Professional Streaming Control Systems</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@500&amp;family=Geist:wght@600;700&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "on-error-container": "#ffdad6",
+                    "inverse-on-surface": "#283044",
+                    "primary-fixed": "#d8e2ff",
+                    "secondary-container": "#571bc1",
+                    "on-primary-container": "#00285d",
+                    "secondary-fixed": "#e9ddff",
+                    "on-background": "#dae2fd",
+                    "inverse-surface": "#dae2fd",
+                    "surface-container-high": "#222a3d",
+                    "surface-dim": "#0b1326",
+                    "primary": "#adc6ff",
+                    "secondary": "#d0bcff",
+                    "surface-container-lowest": "#060e20",
+                    "error-container": "#93000a",
+                    "tertiary-fixed-dim": "#ffb786",
+                    "on-tertiary-fixed-variant": "#723600",
+                    "on-surface": "#dae2fd",
+                    "inverse-primary": "#005ac2",
+                    "on-surface-variant": "#c2c6d6",
+                    "error": "#ffb4ab",
+                    "on-tertiary-fixed": "#311400",
+                    "primary-fixed-dim": "#adc6ff",
+                    "on-error": "#690005",
+                    "on-secondary-fixed": "#23005c",
+                    "tertiary": "#ffb786",
+                    "surface-container-low": "#131b2e",
+                    "outline-variant": "#424754",
+                    "on-tertiary-container": "#461f00",
+                    "on-primary-fixed-variant": "#004395",
+                    "on-secondary": "#3c0091",
+                    "outline": "#8c909f",
+                    "background": "#0b1326",
+                    "secondary-fixed-dim": "#d0bcff",
+                    "surface-container-highest": "#2d3449",
+                    "surface-bright": "#31394d",
+                    "on-secondary-container": "#c4abff",
+                    "primary-container": "#4d8eff",
+                    "surface-tint": "#adc6ff",
+                    "on-secondary-fixed-variant": "#5516be",
+                    "tertiary-container": "#df7412",
+                    "surface-variant": "#2d3449",
+                    "on-primary": "#002e6a",
+                    "on-tertiary": "#502400",
+                    "tertiary-fixed": "#ffdcc6",
+                    "surface": "#0b1326",
+                    "surface-container": "#171f33",
+                    "on-primary-fixed": "#001a42"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.25rem",
+                    "lg": "0.5rem",
+                    "xl": "0.75rem",
+                    "full": "9999px"
+            },
+            "spacing": {
+                    "container-padding": "48px",
+                    "section-gap": "64px",
+                    "margin-mobile": "20px",
+                    "gutter": "24px",
+                    "unit": "8px"
+            },
+            "fontFamily": {
+                    "body-lg": ["Inter"],
+                    "body-md": ["Inter"],
+                    "headline-lg-mobile": ["Geist"],
+                    "label-technical": ["JetBrains Mono"],
+                    "headline-md": ["Geist"],
+                    "display": ["Geist"],
+                    "headline-lg": ["Geist"]
+            },
+            "fontSize": {
+                    "body-lg": ["18px", {"lineHeight": "28px", "fontWeight": "400"}],
+                    "body-md": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                    "headline-lg-mobile": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                    "label-technical": ["12px", {"lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "500"}],
+                    "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                    "display": ["48px", {"lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                    "headline-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "600"}]
+            }
+          },
+        },
+      }
+    </script>
+	<style>
+	        html {
+	            scroll-behavior: smooth;
+	        }
+	        body {
+	            background-color: #0b1326;
+	            color: #dae2fd;
+	            -webkit-font-smoothing: antialiased;
+	        }
+        .glass-panel {
+            background: rgba(23, 31, 51, 0.4);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(66, 71, 84, 0.2);
+        }
+        .hero-gradient {
+            background: radial-gradient(circle at 50% -20%, rgba(77, 142, 255, 0.15), transparent 70%);
+        }
+        .reveal-on-scroll {
+            opacity: 0;
+            transform: translateY(20px);
+            transition: all 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+	        .reveal-on-scroll.active {
+	            opacity: 1;
+	            transform: translateY(0);
+	        }
+	        .app-screenshot {
+	            display: block;
+	            width: 100%;
+	            object-fit: cover;
+	            object-position: top;
+	        }
+	    </style>
+</head>
+<body class="font-body-md text-body-md overflow-x-hidden">
+<!-- TopNavBar -->
+<header class="fixed top-0 w-full z-50 bg-surface/80 backdrop-blur-md dark:bg-surface/80 border-b border-outline-variant/10 transition-all duration-300 ease-in-out">
+<nav class="flex justify-between items-center h-20 px-container-padding max-w-7xl mx-auto">
+<div class="font-display text-headline-md font-bold text-on-surface dark:text-on-surface">DeckPilot</div>
+<div class="hidden md:flex items-center space-x-8">
+	<a class="font-body-md text-body-md text-on-surface-variant dark:text-on-surface-variant hover:text-primary dark:hover:text-primary-fixed transition-colors duration-200" href="#features">Features</a>
+	<a class="font-body-md text-body-md text-on-surface-variant dark:text-on-surface-variant hover:text-primary dark:hover:text-primary-fixed transition-colors duration-200" href="#how-it-works">How It Works</a>
+	<a class="font-body-md text-body-md text-on-surface-variant dark:text-on-surface-variant hover:text-primary dark:hover:text-primary-fixed transition-colors duration-200" href="#desktop">Desktop</a>
+	<a class="font-body-md text-body-md text-on-surface-variant dark:text-on-surface-variant hover:text-primary dark:hover:text-primary-fixed transition-colors duration-200" href="#pricing">Pricing</a>
+	<a class="font-body-md text-body-md text-on-surface-variant dark:text-on-surface-variant hover:text-primary dark:hover:text-primary-fixed transition-colors duration-200" href="#support">Support</a>
+	<a class="bg-primary text-on-primary px-6 py-2 rounded-full font-semibold hover:opacity-90 transition-all" href="#download">Download</a>
+</div>
+	<button class="md:hidden text-on-surface" id="mobile-menu-toggle" aria-controls="mobile-menu" aria-expanded="false" type="button">
+	<span class="material-symbols-outlined">menu</span>
+	</button>
+	</nav>
+	<div class="hidden md:hidden border-t border-outline-variant/10 bg-surface/95 px-margin-mobile py-5" id="mobile-menu">
+	<div class="flex flex-col gap-4 max-w-7xl mx-auto">
+	<a class="text-on-surface-variant hover:text-primary transition-colors" href="#features">Features</a>
+	<a class="text-on-surface-variant hover:text-primary transition-colors" href="#how-it-works">How It Works</a>
+	<a class="text-on-surface-variant hover:text-primary transition-colors" href="#desktop">Desktop</a>
+	<a class="text-on-surface-variant hover:text-primary transition-colors" href="#pricing">Pricing</a>
+	<a class="text-on-surface-variant hover:text-primary transition-colors" href="#support">Support</a>
+	<a class="bg-primary text-on-primary px-5 py-3 rounded-xl font-semibold text-center hover:opacity-90 transition-all" href="#download">Download</a>
+	</div>
+	</div>
+	</header>
+<!-- Hero Section -->
+<section class="relative pt-40 pb-section-gap px-container-padding hero-gradient overflow-hidden">
+<div class="max-w-7xl mx-auto flex flex-col items-center text-center">
+<span class="font-label-technical text-label-technical text-primary tracking-widest uppercase mb-4 reveal-on-scroll active">The Professional Standard</span>
+<h1 class="font-display text-[56px] md:text-[84px] leading-tight font-bold text-on-surface mb-8 max-w-4xl reveal-on-scroll active" style="transition-delay: 100ms;">Control OBS from anywhere.</h1>
+	<p class="font-body-lg text-body-lg text-on-surface-variant max-w-2xl mb-12 reveal-on-scroll active" style="transition-delay: 200ms;">Control scenes, audio, streaming, recording and automations from your phone. Effortless setup, pro-grade latency.</p>
+	<div class="flex flex-wrap justify-center gap-4 mb-20 reveal-on-scroll active" style="transition-delay: 300ms;">
+	<a class="bg-primary text-on-primary px-8 py-4 rounded-xl font-bold text-lg hover:shadow-[0_0_30px_rgba(173,198,255,0.3)] transition-all" href="#download">Get DeckPilot Free</a>
+	<a class="bg-surface-container-high text-on-surface px-8 py-4 rounded-xl font-bold text-lg hover:bg-surface-bright transition-all" href="#desktop">View Demo</a>
+	</div>
+	<!-- Hero Mockup -->
+	<div class="relative w-full max-w-6xl mx-auto reveal-on-scroll active" style="transition-delay: 400ms;">
+	<div class="relative rounded-[2rem] border border-outline-variant/30 bg-surface-container-low p-3 md:p-5 shadow-2xl">
+	<img class="app-screenshot max-h-[620px] rounded-[1.5rem] border border-outline-variant/20 shadow-2xl" alt="DeckPilot Desktop dashboard showing OBS connection, phone connection and automation runtime status." src="assets/screenshots/deckpilot-desktop.png">
+	<div class="absolute -bottom-12 right-4 w-[32%] min-w-[170px] max-w-[290px] rounded-[2rem] border border-outline-variant/30 bg-black p-2 shadow-[0_24px_80px_rgba(0,0,0,0.65)] md:right-10">
+	<img class="app-screenshot aspect-[9/19] rounded-[1.5rem]" alt="DeckPilot mobile app scene switcher connected to OBS." src="assets/screenshots/deckpilot-mobile.png">
+	</div>
+	</div>
+	<!-- Subtle Glow effect -->
+	<div class="absolute -inset-10 bg-primary/10 blur-[100px] -z-10 rounded-full"></div>
+	</div>
+</div>
+</section>
+<!-- Stats Strip -->
+<section class="bg-surface-container-low border-y border-outline-variant/10 py-12 px-container-padding">
+<div class="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-12 text-center items-center">
+<div class="reveal-on-scroll active">
+<div class="font-display text-[48px] font-bold text-primary">500+</div>
+<div class="font-label-technical text-on-surface-variant uppercase tracking-widest">Active Users</div>
+</div>
+<div class="reveal-on-scroll active" style="transition-delay: 100ms;">
+<div class="font-display text-[48px] font-bold text-primary">20+</div>
+<div class="font-label-technical text-on-surface-variant uppercase tracking-widest">Countries Supported</div>
+</div>
+<div class="reveal-on-scroll active" style="transition-delay: 200ms;">
+<div class="font-display text-[48px] font-bold text-primary">10k+</div>
+<div class="font-label-technical text-on-surface-variant uppercase tracking-widest">OBS Sessions Daily</div>
+</div>
+</div>
+</section>
+<!-- Features Grid -->
+<section class="py-section-gap px-container-padding max-w-7xl mx-auto" id="features">
+<div class="text-center mb-16">
+<h2 class="font-display text-headline-lg font-bold mb-4">Engineered for Performance.</h2>
+<p class="font-body-lg text-on-surface-variant">The tools you need to run a professional stream without the hardware deck price tag.</p>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-gutter">
+<!-- Feature Item -->
+<div class="glass-panel p-8 rounded-2xl reveal-on-scroll active">
+<span class="material-symbols-outlined text-primary mb-6 text-4xl">smartphone</span>
+<h3 class="font-headline-md text-on-surface mb-3">Control from phone</h3>
+<p class="text-on-surface-variant">Turn any mobile device into a powerful stream controller.</p>
+</div>
+<div class="glass-panel p-8 rounded-2xl reveal-on-scroll active" style="transition-delay: 100ms;">
+<span class="material-symbols-outlined text-primary mb-6 text-4xl">cable</span>
+<h3 class="font-headline-md text-on-surface mb-3">Direct connection</h3>
+<p class="text-on-surface-variant">Connect directly to OBS Websocket for ultra-low latency commands.</p>
+</div>
+<div class="glass-panel p-8 rounded-2xl reveal-on-scroll active" style="transition-delay: 200ms;">
+<span class="material-symbols-outlined text-primary mb-6 text-4xl">settings_remote</span>
+<h3 class="font-headline-md text-on-surface mb-3">Remote control</h3>
+<p class="text-on-surface-variant">Control your setup even if you aren't in front of the PC.</p>
+</div>
+<div class="glass-panel p-8 rounded-2xl reveal-on-scroll active" style="transition-delay: 300ms;">
+<span class="material-symbols-outlined text-primary mb-6 text-4xl">dynamic_feed</span>
+<h3 class="font-headline-md text-on-surface mb-3">Macros</h3>
+<p class="text-on-surface-variant">Chain multiple OBS actions into a single button press.</p>
+</div>
+<div class="glass-panel p-8 rounded-2xl reveal-on-scroll active" style="transition-delay: 100ms;">
+<span class="material-symbols-outlined text-primary mb-6 text-4xl">bolt</span>
+<h3 class="font-headline-md text-on-surface mb-3">Automations</h3>
+<p class="text-on-surface-variant">Trigger scenes based on events like stream starts or alerts.</p>
+</div>
+<div class="glass-panel p-8 rounded-2xl reveal-on-scroll active" style="transition-delay: 200ms;">
+<span class="material-symbols-outlined text-primary mb-6 text-4xl">monitoring</span>
+<h3 class="font-headline-md text-on-surface mb-3">Stream health</h3>
+<p class="text-on-surface-variant">Real-time bitrates, FPS, and dropped frame alerts on your phone.</p>
+</div>
+<div class="glass-panel p-8 rounded-2xl reveal-on-scroll active" style="transition-delay: 300ms;">
+<span class="material-symbols-outlined text-primary mb-6 text-4xl">group</span>
+<h3 class="font-headline-md text-on-surface mb-3">Volunteer-friendly</h3>
+<p class="text-on-surface-variant">Simplified UI for non-technical volunteers running your broadcast.</p>
+</div>
+<div class="glass-panel p-8 rounded-2xl reveal-on-scroll active" style="transition-delay: 400ms;">
+<span class="material-symbols-outlined text-primary mb-6 text-4xl">devices_other</span>
+<h3 class="font-headline-md text-on-surface mb-3">Multiple devices</h3>
+<p class="text-on-surface-variant">Connect multiple tablets or phones simultaneously.</p>
+</div>
+</div>
+</section>
+<!-- How It Works -->
+<section class="py-section-gap px-container-padding bg-surface-container-lowest" id="how-it-works">
+<div class="max-w-7xl mx-auto">
+<div class="text-center mb-20">
+<h2 class="font-display text-headline-lg font-bold mb-4">Zero Configuration. Absolute Control.</h2>
+<p class="text-on-surface-variant">From install to live in under 60 seconds.</p>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-12 relative">
+<!-- Step 1 -->
+<div class="text-center reveal-on-scroll active">
+<div class="w-16 h-16 bg-primary/20 text-primary rounded-full flex items-center justify-center mx-auto mb-8 font-display text-2xl font-bold">1</div>
+<h3 class="font-headline-md mb-4">Install</h3>
+<p class="text-on-surface-variant">Download DeckPilot on your desktop and mobile device.</p>
+</div>
+<!-- Step 2 -->
+<div class="text-center reveal-on-scroll active" style="transition-delay: 100ms;">
+<div class="w-16 h-16 bg-primary/20 text-primary rounded-full flex items-center justify-center mx-auto mb-8 font-display text-2xl font-bold">2</div>
+<h3 class="font-headline-md mb-4">Connect</h3>
+<p class="text-on-surface-variant">Scan the QR code to pair your phone with your streaming PC.</p>
+</div>
+<!-- Step 3 -->
+<div class="text-center reveal-on-scroll active" style="transition-delay: 200ms;">
+<div class="w-16 h-16 bg-primary/20 text-primary rounded-full flex items-center justify-center mx-auto mb-8 font-display text-2xl font-bold">3</div>
+<h3 class="font-headline-md mb-4">Take Control</h3>
+<p class="text-on-surface-variant">Customize your deck and start controlling your stream.</p>
+</div>
+<!-- Connector Line (Desktop Only) -->
+<div class="hidden md:block absolute top-8 left-1/4 right-1/4 h-0.5 bg-gradient-to-r from-transparent via-outline-variant/30 to-transparent -z-10"></div>
+</div>
+</div>
+</section>
+<!-- Connection Explainer -->
+<section class="py-section-gap px-container-padding max-w-7xl mx-auto">
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-gutter items-center">
+<div class="glass-panel p-10 rounded-3xl reveal-on-scroll active">
+<div class="flex items-center gap-4 mb-6">
+<div class="p-3 bg-secondary/10 rounded-xl">
+<span class="material-symbols-outlined text-secondary">wifi_tethering</span>
+</div>
+<h3 class="font-display text-headline-md font-bold">Direct Connection</h3>
+</div>
+<p class="text-on-surface-variant mb-8">Phone connects directly to OBS. Perfect for minimalist setups using the built-in OBS websocket.</p>
+<ul class="space-y-4">
+<li class="flex items-center gap-3 text-on-surface"><span class="material-symbols-outlined text-primary text-sm">check_circle</span> Lowest possible latency</li>
+<li class="flex items-center gap-3 text-on-surface"><span class="material-symbols-outlined text-primary text-sm">check_circle</span> No intermediate software needed</li>
+<li class="flex items-center gap-3 text-on-surface"><span class="material-symbols-outlined text-primary text-sm">check_circle</span> Native OBS performance</li>
+</ul>
+</div>
+<div class="bg-surface-container-highest p-10 rounded-3xl border border-primary/20 reveal-on-scroll active" style="transition-delay: 100ms;">
+<div class="flex items-center gap-4 mb-6">
+<div class="p-3 bg-primary/10 rounded-xl">
+<span class="material-symbols-outlined text-primary">computer</span>
+</div>
+<h3 class="font-display text-headline-md font-bold">DeckPilot Desktop</h3>
+</div>
+<p class="text-on-surface-variant mb-8">Phone connects to our Desktop app, which then controls OBS. Unlocks advanced logic and background tasks.</p>
+<ul class="space-y-4">
+<li class="flex items-center gap-3 text-on-surface"><span class="material-symbols-outlined text-primary text-sm">check_circle</span> Advanced persistent automations</li>
+<li class="flex items-center gap-3 text-on-surface"><span class="material-symbols-outlined text-primary text-sm">check_circle</span> Centralized dashboard for multiple OBS instances</li>
+<li class="flex items-center gap-3 text-on-surface"><span class="material-symbols-outlined text-primary text-sm">check_circle</span> Custom script integration</li>
+</ul>
+</div>
+</div>
+</section>
+<!-- Automation Showcase -->
+<section class="py-section-gap px-container-padding bg-surface-container-low overflow-hidden">
+<div class="max-w-7xl mx-auto flex flex-col lg:flex-row items-center gap-20">
+<div class="lg:w-1/2 reveal-on-scroll active">
+<h2 class="font-display text-[40px] leading-tight font-bold mb-6">Smart Automations &amp; Macros.</h2>
+<p class="text-body-lg text-on-surface-variant mb-10">Stop worrying about technical glitches. DeckPilot watches your stream and reacts automatically.</p>
+<div class="space-y-6">
+<div class="glass-panel p-6 rounded-xl flex items-center gap-6">
+<div class="w-12 h-12 flex-shrink-0 bg-error/10 rounded-lg flex items-center justify-center">
+<span class="material-symbols-outlined text-error">warning</span>
+</div>
+<div>
+<div class="font-label-technical text-on-surface-variant mb-1">If Dropped Frames &gt; 5%</div>
+<div class="font-bold text-on-surface">Show "Connection Issue" Overlay</div>
+</div>
+</div>
+<div class="glass-panel p-6 rounded-xl flex items-center gap-6">
+<div class="w-12 h-12 flex-shrink-0 bg-primary/10 rounded-lg flex items-center justify-center">
+<span class="material-symbols-outlined text-primary">play_circle</span>
+</div>
+<div>
+<div class="font-label-technical text-on-surface-variant mb-1">When Scene: "Gaming" Starts</div>
+<div class="font-bold text-on-surface">Start Recording + Unmute Mic</div>
+</div>
+</div>
+</div>
+</div>
+	<div class="lg:w-1/2 relative reveal-on-scroll active" style="transition-delay: 200ms;">
+	<div class="aspect-square bg-gradient-to-br from-primary/20 to-secondary/10 rounded-full blur-[100px] absolute -top-20 -right-20"></div>
+	<div class="relative z-10 glass-panel p-4 rounded-3xl overflow-hidden">
+	<img class="app-screenshot h-[400px] rounded-2xl shadow-inner" alt="DeckPilot Desktop home showing the automation runtime running in the background." src="assets/screenshots/deckpilot-desktop.png">
+	</div>
+	</div>
+</div>
+</section>
+<!-- Desktop Section -->
+<section class="py-section-gap px-container-padding max-w-7xl mx-auto" id="desktop">
+<div class="text-center mb-20 reveal-on-scroll active">
+<h2 class="font-display text-headline-lg font-bold mb-4">Meet DeckPilot Desktop.</h2>
+<p class="text-on-surface-variant">The brains behind your broadcast. Manage everything from one command center.</p>
+	</div>
+	<div class="relative reveal-on-scroll active">
+	<img class="w-full h-auto rounded-3xl shadow-2xl border border-outline-variant/20" alt="DeckPilot Desktop app running on macOS with OBS connected and automations active." src="assets/screenshots/deckpilot-desktop.png">
+<div class="grid grid-cols-1 md:grid-cols-3 gap-8 mt-16">
+<div class="flex flex-col gap-2">
+<span class="font-bold text-on-surface">Remote Engine</span>
+<p class="text-on-surface-variant">Runs silently in the background, bridging your mobile and desktop effortlessly.</p>
+</div>
+<div class="flex flex-col gap-2">
+<span class="font-bold text-on-surface">Cloud Sync</span>
+<p class="text-on-surface-variant">Your layouts and macros are synced across all your devices instantly.</p>
+</div>
+<div class="flex flex-col gap-2">
+<span class="font-bold text-on-surface">Plugin Support</span>
+<p class="text-on-surface-variant">Extensible architecture allowing for community plugins and custom scripts.</p>
+</div>
+</div>
+	</div>
+	</section>
+	<!-- Pricing Section -->
+	<section class="py-section-gap px-container-padding bg-surface-container-lowest" id="pricing">
+	<div class="max-w-7xl mx-auto">
+	<div class="text-center mb-16 reveal-on-scroll active">
+	<h2 class="font-display text-headline-lg font-bold mb-4">Start free. Add desktop when you need background automations.</h2>
+	<p class="text-on-surface-variant max-w-2xl mx-auto">Use the Android controller now. The desktop companion keeps automations running on macOS, Windows, and Linux.</p>
+	</div>
+	<div class="grid grid-cols-1 md:grid-cols-2 gap-gutter">
+	<div class="glass-panel p-8 rounded-3xl reveal-on-scroll active">
+	<div class="flex items-center justify-between gap-4 mb-6">
+	<h3 class="font-display text-headline-md font-bold">Mobile Controller</h3>
+	<span class="font-label-technical text-primary uppercase tracking-widest">Free APK</span>
+	</div>
+	<p class="text-on-surface-variant mb-8">Control scenes, stream state, audio and quick actions directly from your Android phone.</p>
+	<a class="inline-flex items-center gap-2 bg-primary text-on-primary px-6 py-3 rounded-xl font-bold hover:opacity-90 transition-all" href="https://github.com/Tayoakosile/obs_stream_deck/releases/latest/download/DeckPilot-Android-arm64.apk">
+	<span class="material-symbols-outlined">android</span>
+	Download Android APK
+	</a>
+	</div>
+	<div class="bg-surface-container-highest p-8 rounded-3xl border border-primary/20 reveal-on-scroll active" style="transition-delay: 100ms;">
+	<div class="flex items-center justify-between gap-4 mb-6">
+	<h3 class="font-display text-headline-md font-bold">Desktop Companion</h3>
+	<span class="font-label-technical text-tertiary uppercase tracking-widest">All desktop builds</span>
+	</div>
+	<p class="text-on-surface-variant mb-8">Keep automations running on the computer even when the phone app is closed.</p>
+	<a class="inline-flex items-center gap-2 bg-surface-container-high text-on-surface border border-outline-variant/30 px-6 py-3 rounded-xl font-bold hover:bg-surface-bright transition-all" href="https://github.com/Tayoakosile/obs_stream_deck/releases/latest">
+	<span class="material-symbols-outlined">desktop_mac</span>
+	Download Desktop Builds
+	</a>
+	</div>
+	</div>
+	</div>
+	</section>
+	<!-- FAQ Section -->
+	<section class="py-section-gap px-container-padding bg-surface-container-low" id="faq">
+<div class="max-w-3xl mx-auto">
+<h2 class="font-display text-headline-lg font-bold text-center mb-16">Common Questions.</h2>
+<div class="space-y-4">
+<details class="group glass-panel rounded-2xl p-6 reveal-on-scroll active" open="">
+<summary class="flex justify-between items-center cursor-pointer list-none">
+<span class="font-bold text-on-surface">Does DeckPilot require Wi-Fi?</span>
+<span class="material-symbols-outlined group-open:rotate-180 transition-transform">expand_more</span>
+</summary>
+<p class="mt-4 text-on-surface-variant">For local control, both devices should be on the same network. However, with the Desktop Pro relay, you can control your stream from anywhere in the world over the internet.</p>
+</details>
+<details class="group glass-panel rounded-2xl p-6 reveal-on-scroll active">
+<summary class="flex justify-between items-center cursor-pointer list-none">
+<span class="font-bold text-on-surface">Which OBS versions are supported?</span>
+<span class="material-symbols-outlined group-open:rotate-180 transition-transform">expand_more</span>
+</summary>
+<p class="mt-4 text-on-surface-variant">DeckPilot is fully compatible with OBS Studio 28.0 and higher, leveraging the native OBS WebSocket v5 integration.</p>
+</details>
+<details class="group glass-panel rounded-2xl p-6 reveal-on-scroll active">
+<summary class="flex justify-between items-center cursor-pointer list-none">
+<span class="font-bold text-on-surface">Is there a limit to buttons or pages?</span>
+<span class="material-symbols-outlined group-open:rotate-180 transition-transform">expand_more</span>
+</summary>
+<p class="mt-4 text-on-surface-variant">No. You can create unlimited decks and pages. Our "Smart Folders" help you organize complex setups easily.</p>
+</details>
+</div>
+</div>
+	</section>
+	<!-- Final CTA -->
+	<section class="py-section-gap px-container-padding relative overflow-hidden" id="download">
+<div class="absolute inset-0 -z-10">
+<div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-primary/10 blur-[150px] rounded-full"></div>
+</div>
+<div class="max-w-4xl mx-auto text-center reveal-on-scroll active">
+<h2 class="font-display text-[48px] md:text-[64px] font-bold mb-8 leading-tight">Your OBS controls. Wherever you need them.</h2>
+	<p class="font-body-lg text-on-surface-variant mb-12">Join thousands of creators who have upgraded their streaming workflow. Professional control, no expensive hardware required.</p>
+	<div class="flex flex-col sm:flex-row justify-center gap-6">
+	<a class="bg-surface-container-high text-on-surface border border-outline-variant/30 px-10 py-5 rounded-xl font-bold text-xl hover:bg-surface-bright transition-all" href="https://github.com/Tayoakosile/obs_stream_deck/releases/latest">Download for Windows</a>
+	<a class="bg-surface-container-highest text-on-surface border border-outline-variant/30 px-10 py-5 rounded-xl font-bold text-xl hover:bg-surface-bright transition-all" href="https://github.com/Tayoakosile/obs_stream_deck/releases/latest">Download for macOS</a>
+	<a class="bg-surface-container-highest text-on-surface border border-outline-variant/30 px-10 py-5 rounded-xl font-bold text-xl hover:bg-surface-bright transition-all" href="https://github.com/Tayoakosile/obs_stream_deck/releases/latest">Download for Linux</a>
+	<a class="bg-primary text-on-primary px-10 py-5 rounded-xl font-bold text-xl hover:shadow-xl transition-all" href="https://github.com/Tayoakosile/obs_stream_deck/releases/latest/download/DeckPilot-Android-arm64.apk">Download Android APK</a>
+	</div>
+	<div class="mt-12 flex flex-col sm:flex-row justify-center items-center gap-4 text-on-surface-variant">
+	<a class="inline-flex items-center gap-2 rounded-xl border border-primary/30 bg-primary/10 px-5 py-3 hover:bg-primary/20 transition-all" href="https://github.com/Tayoakosile/obs_stream_deck/releases/latest/download/DeckPilot-Android-arm64.apk">
+	<span class="material-symbols-outlined text-primary">android</span>
+	Android APK available now
+	</a>
+	<span class="inline-flex items-center gap-2 rounded-xl border border-outline-variant/30 bg-surface-container-low px-5 py-3 opacity-70">
+	<span class="material-symbols-outlined">phone_iphone</span>
+	iOS coming soon
+	</span>
+	</div>
+	</div>
+	</section>
+	<!-- Footer -->
+	<footer class="bg-surface-container-lowest border-t border-outline-variant/10 py-section-gap px-container-padding" id="support">
+<div class="max-w-7xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-gutter">
+<div class="col-span-2 md:col-span-1">
+<div class="font-display text-headline-md font-bold text-on-surface mb-6">DeckPilot</div>
+<p class="text-on-surface-variant mb-8 max-w-xs">Professional streaming control systems. High-performance, low-latency, creator-first.</p>
+<div class="flex gap-4">
+<span class="material-symbols-outlined text-on-surface-variant cursor-pointer hover:text-primary">public</span>
+<span class="material-symbols-outlined text-on-surface-variant cursor-pointer hover:text-primary">forum</span>
+<span class="material-symbols-outlined text-on-surface-variant cursor-pointer hover:text-primary">code</span>
+</div>
+</div>
+	<div>
+	<h4 class="font-bold text-on-surface mb-6">Product</h4>
+	<ul class="space-y-4 text-on-surface-variant">
+	<li><a class="hover:text-on-surface" href="#features">Features</a></li>
+	<li><a class="hover:text-on-surface" href="#pricing">Pricing</a></li>
+	<li><a class="hover:text-on-surface" href="#desktop">Desktop App</a></li>
+	<li><a class="hover:text-on-surface" href="https://github.com/Tayoakosile/obs_stream_deck/releases/latest/download/DeckPilot-Android-arm64.apk">Mobile App</a></li>
+	</ul>
+	</div>
+	<div>
+	<h4 class="font-bold text-on-surface mb-6">Support</h4>
+	<ul class="space-y-4 text-on-surface-variant">
+	<li><a class="hover:text-on-surface" href="#how-it-works">Documentation</a></li>
+	<li><a class="hover:text-on-surface" href="#support">Community</a></li>
+	<li><a class="hover:text-on-surface" href="#support">Contact</a></li>
+	<li><a class="hover:text-on-surface" href="#faq">FAQ</a></li>
+	</ul>
+	</div>
+	<div>
+	<h4 class="font-bold text-on-surface mb-6">Company</h4>
+	<ul class="space-y-4 text-on-surface-variant">
+	<li><a class="hover:text-on-surface" href="#features">About</a></li>
+	<li><span class="opacity-60">Privacy coming soon</span></li>
+	<li><span class="opacity-60">Terms coming soon</span></li>
+	<li><span class="opacity-60">Imprint coming soon</span></li>
+	</ul>
+</div>
+</div>
+<div class="max-w-7xl mx-auto mt-20 pt-8 border-t border-outline-variant/5 text-center text-on-surface-variant/50 text-sm">
+            © 2024 DeckPilot. Professional streaming control systems.
+        </div>
+</footer>
+<script>
+        // Simple Intersection Observer for scroll reveal animations
+        const observerOptions = {
+            threshold: 0.1,
+            rootMargin: '0px 0px -50px 0px'
+        };
+
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('active');
+                }
+            });
+        }, observerOptions);
+
+	        document.querySelectorAll('.reveal-on-scroll').forEach(el => observer.observe(el));
+
+	        const mobileMenuToggle = document.querySelector('#mobile-menu-toggle');
+	        const mobileMenu = document.querySelector('#mobile-menu');
+	        mobileMenuToggle?.addEventListener('click', () => {
+	            const isOpen = !mobileMenu.classList.contains('hidden');
+	            mobileMenu.classList.toggle('hidden', isOpen);
+	            mobileMenuToggle.setAttribute('aria-expanded', String(!isOpen));
+	        });
+	        mobileMenu?.querySelectorAll('a').forEach(link => {
+	            link.addEventListener('click', () => {
+	                mobileMenu.classList.add('hidden');
+	                mobileMenuToggle?.setAttribute('aria-expanded', 'false');
+	            });
+	        });
+	        
+	        // Sticky Header Shrink
+        window.addEventListener('scroll', () => {
+            const header = document.querySelector('header');
+            if (window.scrollY > 50) {
+                header.classList.add('h-16');
+                header.classList.remove('h-20');
+            } else {
+                header.classList.add('h-20');
+                header.classList.remove('h-16');
+            }
+        });
+    </script>
+
+
+</body></html>

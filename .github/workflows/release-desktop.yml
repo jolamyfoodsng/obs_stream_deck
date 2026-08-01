@@ -1,0 +1,72 @@
+name: Release DeckPilot Desktop
+
+on:
+  push:
+    tags:
+      - 'desktop-v*'
+
+jobs:
+  release:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            name: macOS
+          - platform: windows-latest
+            name: Windows
+          - platform: ubuntu-22.04
+            name: Linux
+
+    runs-on: ${{ matrix.platform }}
+    defaults:
+      run:
+        working-directory: deckpilot_desktop
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: deckpilot_desktop/package-lock.json
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: deckpilot_desktop/src-tauri -> target
+
+      - name: Build and release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          projectPath: deckpilot_desktop
+          tagName: ${{ github.ref_name }}
+          releaseName: 'DeckPilot Desktop ${{ github.ref_name }}'
+          releaseBody: |
+            Download DeckPilot Desktop for macOS, Windows, or Linux from the assets below.
+
+            This release is built automatically from the tagged source revision.
+          releaseDraft: false
+          prerelease: false
